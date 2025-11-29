@@ -650,17 +650,7 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function getLyricsLines() {
-    let lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-    if (lines.length === 0) {
-      lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .simplebar-content .line:not(.musical-line)");
-    }
-    if (lines.length === 0) {
-      lines = document.querySelectorAll("#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)");
-    }
-    if (lines.length === 0) {
-      lines = document.querySelectorAll("#SpicyLyricsPage .line");
-    }
-    Spicetify.showNotification(`Found ${lines.length} lyrics lines`);
+    const lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
     return lines;
   }
   function extractLineText(lineElement) {

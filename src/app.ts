@@ -196,24 +196,7 @@ async function handleTranslateToggle(): Promise<void> {
  */
 function getLyricsLines(): NodeListOf<Element> {
     // Spicy Lyrics uses lowercase 'line' class
-    let lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
-    
-    if (lines.length === 0) {
-        // Try with simplebar content wrapper
-        lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .simplebar-content .line:not(.musical-line)');
-    }
-    
-    if (lines.length === 0) {
-        // Try SpicyLyricsScrollContainer
-        lines = document.querySelectorAll('#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
-    }
-    
-    if (lines.length === 0) {
-        // Fallback - any line class
-        lines = document.querySelectorAll('#SpicyLyricsPage .line');
-    }
-    
-    Spicetify.showNotification(`Found ${lines.length} lyrics lines`);
+    const lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
     return lines;
 }
 

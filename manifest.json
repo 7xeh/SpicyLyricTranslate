@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Spicy Lyric Translator",
+    "description": "A Spicetify extension that adds real-time translation to Spicy Lyrics.",
+    "preview": "preview.png",
+    "main": "dist/spicy-lyric-translater.js",
+    "readme": "README.md",
+    "authors": [{ "name": "7xeh", "url": "https://github.com/7xeh" }],
+    "branch": "main",
+    "tags": [
+      "lyrics",
+      "fullscreen",
+      "background",
+      "romanization",
+      "romaji",
+      "romaja",
+      "pinyin",
+      "japanese",
+      "korean",
+      "chinese",
+      "spicy-lyrics",
+      "word-to-word-lyrics",
+      "translation",
+      "karaoke",
+      "spicetify",
+      "syllable-lyrics",
+      "syllable",
+      "smooth",
+      "beautiful",
+      "spicy",
+      "animated",
+      "background",
+      "backgrounds",
+      "dynamic",
+      "pretty",
+      "customizable",
+      "google",
+      "google-translate",
+      "real-time"
+    ]
+  }
+]

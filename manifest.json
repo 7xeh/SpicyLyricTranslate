@@ -1,0 +1,19 @@
+[
+  {
+    "name": "Spicy Lyric Translater",
+    "description": "Adds translation functionality to Spicy Lyrics. Translate lyrics to your preferred language with a single click.",
+    "preview": "./preview.png",
+    "main": "./builds/spicy-lyric-translater.js",
+    "readme": "README.md",
+    "branch": "main",
+    "authors": [{"name": "Your Name", "url": "https://github.com/yourusername"}],
+    "tags": [
+      "lyrics",
+      "translation",
+      "spicy-lyrics",
+      "translate",
+      "spicetify",
+      "addon"
+    ]
+  }
+]

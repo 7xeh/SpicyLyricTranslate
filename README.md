@@ -86,7 +86,7 @@ Access settings by right-clicking the translate button:
 
 ## API
 
-The extension exposes a global API for advanced users:
+A global API is available for advanced usage:
 
 ```javascript
 // Enable translation

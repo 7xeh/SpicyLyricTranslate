@@ -626,6 +626,17 @@ var SpicyLyricTranslater = (() => {
       }
     }
   }
+  function updateButtonState() {
+    const button = document.querySelector("#TranslateToggle");
+    if (!button)
+      return;
+    button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+    button.classList.toggle("active", state.isEnabled);
+    const buttonWithTippy = button;
+    if (buttonWithTippy._tippy) {
+      buttonWithTippy._tippy.setContent(state.isEnabled ? "Disable Translation" : "Enable Translation");
+    }
+  }
   async function handleTranslateToggle() {
     const button = document.querySelector("#TranslateToggle");
     if (!button || state.isTranslating) {
@@ -637,12 +648,7 @@ var SpicyLyricTranslater = (() => {
     state.isEnabled = !state.isEnabled;
     storage.set("translation-enabled", state.isEnabled.toString());
     Spicetify.showNotification(state.isEnabled ? "Translation enabled - translating..." : "Translation disabled");
-    button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-    button.classList.toggle("active", state.isEnabled);
-    const buttonWithTippy = button;
-    if (buttonWithTippy._tippy) {
-      buttonWithTippy._tippy.setContent(state.isEnabled ? "Disable Translation" : "Enable Translation");
-    }
+    updateButtonState();
     if (state.isEnabled) {
       await translateCurrentLyrics();
     } else {
@@ -922,12 +928,17 @@ var SpicyLyricTranslater = (() => {
         return;
       const hasNewContent = mutations.some(
         (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
-          (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("Line")
+          (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
         )
       );
-      if (hasNewContent && state.autoTranslate) {
+      if (hasNewContent && state.autoTranslate && !state.isTranslating) {
         setTimeout(() => {
-          if (state.isEnabled && !state.isTranslating) {
+          if (!state.isTranslating) {
+            if (!state.isEnabled) {
+              state.isEnabled = true;
+              storage.set("translation-enabled", "true");
+              updateButtonState();
+            }
             translateCurrentLyrics();
           }
         }, 500);
@@ -946,9 +957,14 @@ var SpicyLyricTranslater = (() => {
     insertTranslateButton();
     setupViewControlsObserver();
     setupLyricsObserver();
-    if (state.isEnabled && state.autoTranslate) {
+    if (state.autoTranslate) {
       setTimeout(() => {
-        if (state.isEnabled && !state.isTranslating) {
+        if (!state.isTranslating) {
+          if (!state.isEnabled) {
+            state.isEnabled = true;
+            storage.set("translation-enabled", "true");
+            updateButtonState();
+          }
           translateCurrentLyrics();
         }
       }, 1e3);
@@ -1076,8 +1092,13 @@ var SpicyLyricTranslater = (() => {
       Spicetify.Player.addEventListener("songchange", () => {
         state.translatedLyrics.clear();
         removeTranslations();
-        if (state.isEnabled && state.autoTranslate && isSpicyLyricsOpen()) {
+        if (state.autoTranslate && isSpicyLyricsOpen()) {
           setTimeout(() => {
+            if (!state.isEnabled) {
+              state.isEnabled = true;
+              storage.set("translation-enabled", "true");
+              updateButtonState();
+            }
             translateCurrentLyrics();
           }, 1500);
         }

@@ -158,6 +158,23 @@ function insertTranslateButton(): void {
 }
 
 /**
+ * Update the translate button visual state
+ */
+function updateButtonState(): void {
+    const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
+    if (!button) return;
+    
+    button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+    button.classList.toggle('active', state.isEnabled);
+    
+    // Update tooltip
+    const buttonWithTippy = button as HTMLButtonElement & { _tippy?: { setContent: (content: string) => void } };
+    if (buttonWithTippy._tippy) {
+        buttonWithTippy._tippy.setContent(state.isEnabled ? 'Disable Translation' : 'Enable Translation');
+    }
+}
+
+/**
  * Handle translate toggle button click
  */
 async function handleTranslateToggle(): Promise<void> {
@@ -175,14 +192,7 @@ async function handleTranslateToggle(): Promise<void> {
     Spicetify.showNotification(state.isEnabled ? 'Translation enabled - translating...' : 'Translation disabled');
     
     // Update button state
-    button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-    button.classList.toggle('active', state.isEnabled);
-    
-    // Update tooltip
-    const buttonWithTippy = button as HTMLButtonElement & { _tippy?: { setContent: (content: string) => void } };
-    if (buttonWithTippy._tippy) {
-        buttonWithTippy._tippy.setContent(state.isEnabled ? 'Disable Translation' : 'Enable Translation');
-    }
+    updateButtonState();
     
     if (state.isEnabled) {
         await translateCurrentLyrics();
@@ -580,14 +590,20 @@ function setupLyricsObserver(): void {
             m.addedNodes.length > 0 &&
             Array.from(m.addedNodes).some(n => 
                 n.nodeType === Node.ELEMENT_NODE && 
-                (n as Element).classList?.contains('Line')
+                (n as Element).classList?.contains('line')
             )
         );
         
-        if (hasNewContent && state.autoTranslate) {
+        if (hasNewContent && state.autoTranslate && !state.isTranslating) {
             // Debounce to avoid multiple rapid translations
             setTimeout(() => {
-                if (state.isEnabled && !state.isTranslating) {
+                if (!state.isTranslating) {
+                    // Auto-enable translation if auto-translate is on
+                    if (!state.isEnabled) {
+                        state.isEnabled = true;
+                        storage.set('translation-enabled', 'true');
+                        updateButtonState();
+                    }
                     translateCurrentLyrics();
                 }
             }, 500);
@@ -617,11 +633,17 @@ async function onSpicyLyricsOpen(): Promise<void> {
     setupViewControlsObserver();
     setupLyricsObserver();
     
-    // Auto-translate if enabled
-    if (state.isEnabled && state.autoTranslate) {
+    // Auto-translate if auto-translate setting is on
+    if (state.autoTranslate) {
         // Wait a bit for lyrics to load
         setTimeout(() => {
-            if (state.isEnabled && !state.isTranslating) {
+            if (!state.isTranslating) {
+                // Auto-enable translation
+                if (!state.isEnabled) {
+                    state.isEnabled = true;
+                    storage.set('translation-enabled', 'true');
+                    updateButtonState();
+                }
                 translateCurrentLyrics();
             }
         }, 1000);
@@ -809,9 +831,15 @@ async function initialize(): Promise<void> {
             state.translatedLyrics.clear();
             removeTranslations();
             
-            // Re-translate if enabled and auto-translate is on
-            if (state.isEnabled && state.autoTranslate && isSpicyLyricsOpen()) {
+            // Re-translate if auto-translate is on
+            if (state.autoTranslate && isSpicyLyricsOpen()) {
                 setTimeout(() => {
+                    // Auto-enable translation
+                    if (!state.isEnabled) {
+                        state.isEnabled = true;
+                        storage.set('translation-enabled', 'true');
+                        updateButtonState();
+                    }
                     translateCurrentLyrics();
                 }, 1500);
             }

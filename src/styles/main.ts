@@ -180,7 +180,17 @@ export const styles = `
 
 /* Hide original content when showing translation only */
 .spicy-hidden-original {
-    display: none !important;
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* Translation replacement (when hiding original) */

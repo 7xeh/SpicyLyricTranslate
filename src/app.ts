@@ -413,44 +413,58 @@ function applyTranslations(lines: NodeListOf<Element>): void {
  */
 function seekToLine(lineElement: HTMLElement): void {
     try {
-        // The line element itself should have Spicy Lyrics' click handler
-        // We need to trigger a click on the original content, not our translation
+        // We need to find and click a word/syllable element that has Spicy Lyrics' click handler
         
-        // Method 1: Find and click a word/syllable element (they have the seek handlers)
-        const wordElement = lineElement.querySelector('.word:not(.dot), .syllable');
-        if (wordElement) {
-            (wordElement as HTMLElement).click();
+        // Method 1: Find a visible word/syllable element (when showing original)
+        const visibleWord = lineElement.querySelector('.word:not(.spicy-hidden-original):not(.dot), .syllable:not(.spicy-hidden-original)');
+        if (visibleWord) {
+            (visibleWord as HTMLElement).click();
             return;
         }
         
-        // Method 2: If we hid original content, temporarily reveal and click it
-        const hiddenOriginal = lineElement.querySelector('.spicy-hidden-original');
-        if (hiddenOriginal) {
-            const hiddenEl = hiddenOriginal as HTMLElement;
-            const origDisplay = hiddenEl.style.display;
-            hiddenEl.style.cssText = 'display: block !important; opacity: 0; position: absolute; pointer-events: auto;';
+        // Method 2: Find hidden word/syllable elements and temporarily enable pointer events
+        const hiddenWord = lineElement.querySelector('.word.spicy-hidden-original, .syllable.spicy-hidden-original');
+        if (hiddenWord) {
+            const el = hiddenWord as HTMLElement;
+            // Temporarily enable pointer events and make visible for click
+            el.classList.remove('spicy-hidden-original');
+            el.style.cssText = 'position: absolute; opacity: 0; pointer-events: auto;';
             
-            // Find a clickable element inside
-            const clickTarget = hiddenEl.querySelector('.word, .syllable') || hiddenEl;
-            (clickTarget as HTMLElement).click();
-            
-            setTimeout(() => {
-                hiddenEl.style.cssText = '';
-                hiddenEl.style.display = origDisplay;
-            }, 50);
+            // Use requestAnimationFrame to ensure style is applied before clicking
+            requestAnimationFrame(() => {
+                el.click();
+                // Restore hidden state
+                setTimeout(() => {
+                    el.style.cssText = '';
+                    el.classList.add('spicy-hidden-original');
+                }, 50);
+            });
             return;
         }
         
-        // Method 3: Dispatch click directly on line element
-        // Spicy Lyrics may have handlers on the line itself
-        const clickEvent = new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: lineElement.getBoundingClientRect().left + 10,
-            clientY: lineElement.getBoundingClientRect().top + 10
-        });
-        lineElement.dispatchEvent(clickEvent);
+        // Method 3: For wrapped content (line-synced), find inner elements
+        const wrappedContent = lineElement.querySelector('.spicy-original-content');
+        if (wrappedContent) {
+            const innerWord = wrappedContent.querySelector('.word, .syllable');
+            if (innerWord) {
+                const el = innerWord as HTMLElement;
+                wrappedContent.classList.remove('spicy-hidden-original');
+                (wrappedContent as HTMLElement).style.cssText = 'position: absolute; opacity: 0; pointer-events: auto;';
+                
+                requestAnimationFrame(() => {
+                    el.click();
+                    setTimeout(() => {
+                        (wrappedContent as HTMLElement).style.cssText = '';
+                        wrappedContent.classList.add('spicy-hidden-original');
+                    }, 50);
+                });
+                return;
+            }
+        }
+        
+        // Method 4: Click the line element itself as fallback
+        // Some Spicy Lyrics versions may have click handlers on the line
+        lineElement.click();
         
     } catch (error) {
         console.error('[SpicyLyricTranslater] Failed to seek:', error);

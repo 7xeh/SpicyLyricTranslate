@@ -489,7 +489,17 @@ var SpicyLyricTranslater = (() => {
 
 /* Hide original content when showing translation only */
 .spicy-hidden-original {
-    display: none !important;
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* Translation replacement (when hiding original) */
@@ -818,32 +828,43 @@ var SpicyLyricTranslater = (() => {
   }
   function seekToLine(lineElement) {
     try {
-      const wordElement = lineElement.querySelector(".word:not(.dot), .syllable");
-      if (wordElement) {
-        wordElement.click();
+      const visibleWord = lineElement.querySelector(".word:not(.spicy-hidden-original):not(.dot), .syllable:not(.spicy-hidden-original)");
+      if (visibleWord) {
+        visibleWord.click();
         return;
       }
-      const hiddenOriginal = lineElement.querySelector(".spicy-hidden-original");
-      if (hiddenOriginal) {
-        const hiddenEl = hiddenOriginal;
-        const origDisplay = hiddenEl.style.display;
-        hiddenEl.style.cssText = "display: block !important; opacity: 0; position: absolute; pointer-events: auto;";
-        const clickTarget = hiddenEl.querySelector(".word, .syllable") || hiddenEl;
-        clickTarget.click();
-        setTimeout(() => {
-          hiddenEl.style.cssText = "";
-          hiddenEl.style.display = origDisplay;
-        }, 50);
+      const hiddenWord = lineElement.querySelector(".word.spicy-hidden-original, .syllable.spicy-hidden-original");
+      if (hiddenWord) {
+        const el = hiddenWord;
+        el.classList.remove("spicy-hidden-original");
+        el.style.cssText = "position: absolute; opacity: 0; pointer-events: auto;";
+        requestAnimationFrame(() => {
+          el.click();
+          setTimeout(() => {
+            el.style.cssText = "";
+            el.classList.add("spicy-hidden-original");
+          }, 50);
+        });
         return;
       }
-      const clickEvent = new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: lineElement.getBoundingClientRect().left + 10,
-        clientY: lineElement.getBoundingClientRect().top + 10
-      });
-      lineElement.dispatchEvent(clickEvent);
+      const wrappedContent = lineElement.querySelector(".spicy-original-content");
+      if (wrappedContent) {
+        const innerWord = wrappedContent.querySelector(".word, .syllable");
+        if (innerWord) {
+          const el = innerWord;
+          wrappedContent.classList.remove("spicy-hidden-original");
+          wrappedContent.style.cssText = "position: absolute; opacity: 0; pointer-events: auto;";
+          requestAnimationFrame(() => {
+            el.click();
+            setTimeout(() => {
+              wrappedContent.style.cssText = "";
+              wrappedContent.classList.add("spicy-hidden-original");
+            }, 50);
+          });
+          return;
+        }
+      }
+      lineElement.click();
     } catch (error) {
       console.error("[SpicyLyricTranslater] Failed to seek:", error);
     }

@@ -180,16 +180,13 @@ function updateButtonState(): void {
 async function handleTranslateToggle(): Promise<void> {
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (!button || state.isTranslating) {
-        if (state.isTranslating) {
-            Spicetify.showNotification('Translation in progress, please wait...');
-        }
         return;
     }
     
     state.isEnabled = !state.isEnabled;
     storage.set('translation-enabled', state.isEnabled.toString());
     
-    Spicetify.showNotification(state.isEnabled ? 'Translation enabled - translating...' : 'Translation disabled');
+    // Only notify when disabling (enabling will show success notification after translation)
     
     // Update button state
     updateButtonState();
@@ -278,7 +275,6 @@ async function translateCurrentLyrics(): Promise<void> {
         return;
     }
     
-    Spicetify.showNotification(`Translating ${lines.length} lines to ${state.targetLanguage}...`);
     state.isTranslating = true;
     
     // Update button to show loading state
@@ -450,8 +446,6 @@ function showSettingsModal(): void {
         alert('Settings not available - Spicetify PopupModal not found');
         return;
     }
-    
-    Spicetify.showNotification('Opening settings...');
     
     const languageOptions = SUPPORTED_LANGUAGES
         .map(lang => `<option value="${lang.code}" ${lang.code === state.targetLanguage ? 'selected' : ''}>${lang.name}</option>`)

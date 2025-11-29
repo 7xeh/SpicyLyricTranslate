@@ -640,14 +640,10 @@ var SpicyLyricTranslater = (() => {
   async function handleTranslateToggle() {
     const button = document.querySelector("#TranslateToggle");
     if (!button || state.isTranslating) {
-      if (state.isTranslating) {
-        Spicetify.showNotification("Translation in progress, please wait...");
-      }
       return;
     }
     state.isEnabled = !state.isEnabled;
     storage.set("translation-enabled", state.isEnabled.toString());
-    Spicetify.showNotification(state.isEnabled ? "Translation enabled - translating..." : "Translation disabled");
     updateButtonState();
     if (state.isEnabled) {
       await translateCurrentLyrics();
@@ -701,7 +697,6 @@ var SpicyLyricTranslater = (() => {
       console.log("[SpicyLyricTranslater] No lyrics lines found");
       return;
     }
-    Spicetify.showNotification(`Translating ${lines.length} lines to ${state.targetLanguage}...`);
     state.isTranslating = true;
     const button = document.querySelector("#TranslateToggle");
     if (button) {
@@ -818,7 +813,6 @@ var SpicyLyricTranslater = (() => {
       alert("Settings not available - Spicetify PopupModal not found");
       return;
     }
-    Spicetify.showNotification("Opening settings...");
     const languageOptions = SUPPORTED_LANGUAGES.map((lang) => `<option value="${lang.code}" ${lang.code === state.targetLanguage ? "selected" : ""}>${lang.name}</option>`).join("");
     const content = document.createElement("div");
     content.className = "spicy-translate-settings";

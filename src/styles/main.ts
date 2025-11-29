@@ -175,6 +175,7 @@ export const styles = `
     opacity: 0.7;
     margin-top: 4px;
     font-style: italic;
+    pointer-events: none;
 }
 
 /* Hide original content when showing translation only */
@@ -189,18 +190,31 @@ export const styles = `
     opacity: 1 !important;
     font-size: 1em !important;
     margin-top: 0 !important;
+    pointer-events: none;
 }
 
-/* Ensure translated lines maintain proper styling */
+/* Ensure translated lines maintain proper styling and are clickable */
 .line.spicy-translated {
     display: flex;
     flex-direction: column;
     align-items: inherit;
+    cursor: pointer;
 }
 
 .line.spicy-translated .spicy-translation-replacement {
     display: block;
     width: 100%;
+    pointer-events: none;
+}
+
+/* Ensure translation container doesn't block clicks */
+.spicy-translation-container {
+    pointer-events: none;
+}
+
+/* Original content wrapper shouldn't block clicks either */
+.spicy-original-content {
+    pointer-events: none;
 }
 
 /* Translation loading overlay */

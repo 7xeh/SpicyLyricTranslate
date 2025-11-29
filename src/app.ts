@@ -413,49 +413,42 @@ function applyTranslations(lines: NodeListOf<Element>): void {
  */
 function seekToLine(lineElement: HTMLElement): void {
     try {
-        // Try to get time from Spicy Lyrics' LyricsObject via the exposed API
-        // The line index can help us find the corresponding time
-        const lineIndex = parseInt(lineElement.dataset.lineIndex || '0');
+        // The line element itself should have Spicy Lyrics' click handler
+        // We need to trigger a click on the original content, not our translation
         
-        // Try accessing Spicy Lyrics internal state through window
-        const win = window as any;
-        
-        // Method 1: Try Spicy Lyrics' internal API (if exposed)
-        if (win._sB_cc && win._sB_cc["53le7r7i"]) {
-            const spicyApi = win._sB_cc["53le7r7i"];
-            if (typeof spicyApi.seekToLine === 'function') {
-                spicyApi.seekToLine(lineIndex);
-                return;
-            }
-        }
-        
-        // Method 2: Try to find all lines and get the time from CSS custom properties or data attributes
-        const allLines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
-        const linesArray = Array.from(allLines);
-        const currentIndex = linesArray.indexOf(lineElement);
-        
-        // Method 3: Simulate a click on a hidden original element if it exists
-        const hiddenOriginal = lineElement.querySelector('.spicy-hidden-original');
-        if (hiddenOriginal) {
-            // Temporarily show it, click it, hide it again
-            (hiddenOriginal as HTMLElement).style.display = 'block';
-            (hiddenOriginal as HTMLElement).style.opacity = '0';
-            (hiddenOriginal as HTMLElement).style.position = 'absolute';
-            (hiddenOriginal as HTMLElement).click();
-            setTimeout(() => {
-                (hiddenOriginal as HTMLElement).style.display = '';
-                (hiddenOriginal as HTMLElement).style.opacity = '';
-                (hiddenOriginal as HTMLElement).style.position = '';
-            }, 10);
+        // Method 1: Find and click a word/syllable element (they have the seek handlers)
+        const wordElement = lineElement.querySelector('.word:not(.dot), .syllable');
+        if (wordElement) {
+            (wordElement as HTMLElement).click();
             return;
         }
         
-        // Method 4: Click the line element itself (the parent might have the handler)
-        // Create and dispatch a click event on the line
+        // Method 2: If we hid original content, temporarily reveal and click it
+        const hiddenOriginal = lineElement.querySelector('.spicy-hidden-original');
+        if (hiddenOriginal) {
+            const hiddenEl = hiddenOriginal as HTMLElement;
+            const origDisplay = hiddenEl.style.display;
+            hiddenEl.style.cssText = 'display: block !important; opacity: 0; position: absolute; pointer-events: auto;';
+            
+            // Find a clickable element inside
+            const clickTarget = hiddenEl.querySelector('.word, .syllable') || hiddenEl;
+            (clickTarget as HTMLElement).click();
+            
+            setTimeout(() => {
+                hiddenEl.style.cssText = '';
+                hiddenEl.style.display = origDisplay;
+            }, 50);
+            return;
+        }
+        
+        // Method 3: Dispatch click directly on line element
+        // Spicy Lyrics may have handlers on the line itself
         const clickEvent = new MouseEvent('click', {
             bubbles: true,
             cancelable: true,
-            view: window
+            view: window,
+            clientX: lineElement.getBoundingClientRect().left + 10,
+            clientY: lineElement.getBoundingClientRect().top + 10
         });
         lineElement.dispatchEvent(clickEvent);
         

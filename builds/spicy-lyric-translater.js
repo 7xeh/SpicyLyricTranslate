@@ -818,35 +818,30 @@ var SpicyLyricTranslater = (() => {
   }
   function seekToLine(lineElement) {
     try {
-      const lineIndex = parseInt(lineElement.dataset.lineIndex || "0");
-      const win = window;
-      if (win._sB_cc && win._sB_cc["53le7r7i"]) {
-        const spicyApi = win._sB_cc["53le7r7i"];
-        if (typeof spicyApi.seekToLine === "function") {
-          spicyApi.seekToLine(lineIndex);
-          return;
-        }
+      const wordElement = lineElement.querySelector(".word:not(.dot), .syllable");
+      if (wordElement) {
+        wordElement.click();
+        return;
       }
-      const allLines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-      const linesArray = Array.from(allLines);
-      const currentIndex = linesArray.indexOf(lineElement);
       const hiddenOriginal = lineElement.querySelector(".spicy-hidden-original");
       if (hiddenOriginal) {
-        hiddenOriginal.style.display = "block";
-        hiddenOriginal.style.opacity = "0";
-        hiddenOriginal.style.position = "absolute";
-        hiddenOriginal.click();
+        const hiddenEl = hiddenOriginal;
+        const origDisplay = hiddenEl.style.display;
+        hiddenEl.style.cssText = "display: block !important; opacity: 0; position: absolute; pointer-events: auto;";
+        const clickTarget = hiddenEl.querySelector(".word, .syllable") || hiddenEl;
+        clickTarget.click();
         setTimeout(() => {
-          hiddenOriginal.style.display = "";
-          hiddenOriginal.style.opacity = "";
-          hiddenOriginal.style.position = "";
-        }, 10);
+          hiddenEl.style.cssText = "";
+          hiddenEl.style.display = origDisplay;
+        }, 50);
         return;
       }
       const clickEvent = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
-        view: window
+        view: window,
+        clientX: lineElement.getBoundingClientRect().left + 10,
+        clientY: lineElement.getBoundingClientRect().top + 10
       });
       lineElement.dispatchEvent(clickEvent);
     } catch (error) {

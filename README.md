@@ -137,10 +137,6 @@ npm run deploy
 - [Spicetify](https://spicetify.app/) - The Spotify client customization tool
 - Translation powered by Google Translate API
 
-## License
-
-MIT License - See [LICENSE](LICENSE) for details
-
 ## Contributing
 
 Contributions are welcome! Feel free to open issues or submit pull requests.

@@ -4,7 +4,7 @@
  */
 
 import { storage } from './storage';
-import { SUPPORTED_LANGUAGES, clearTranslationCache } from './translator';
+import { SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './translator';
 
 // Dynamic import for spcr-settings (may not be available)
 declare const require: any;
@@ -47,6 +47,46 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
+            // Preferred API
+            const apiOptions = ['Google Translate', 'LibreTranslate', 'Custom API'];
+            const currentApiIndex = (() => {
+                const api = storage.get('preferred-api') || 'google';
+                switch (api) {
+                    case 'libretranslate': return 1;
+                    case 'custom': return 2;
+                    default: return 0;
+                }
+            })();
+            
+            settings.addDropDown(
+                'preferred-api',
+                'Preferred Translation API',
+                apiOptions,
+                currentApiIndex,
+                () => {
+                    const selectedIndex = settings.getFieldValue('preferred-api');
+                    const apis = ['google', 'libretranslate', 'custom'];
+                    const api = apis[selectedIndex] || 'google';
+                    storage.set('preferred-api', api);
+                    setPreferredApi(api as 'google' | 'libretranslate' | 'custom', storage.get('custom-api-url') || '');
+                }
+            );
+            
+            // Custom API URL
+            settings.addInput(
+                'custom-api-url',
+                'Custom API URL',
+                storage.get('custom-api-url') || '',
+                () => {
+                    const url = settings.getFieldValue('custom-api-url');
+                    storage.set('custom-api-url', url);
+                    setPreferredApi(
+                        (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google',
+                        url
+                    );
+                }
+            );
+            
             // Show Original
             settings.addToggle(
                 'show-original',
@@ -67,6 +107,16 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
+            // Show Notifications
+            settings.addToggle(
+                'show-notifications',
+                'Show Notifications',
+                storage.get('show-notifications') !== 'false',
+                () => {
+                    storage.set('show-notifications', settings.getFieldValue('show-notifications'));
+                }
+            );
+            
             // Clear Cache Button
             settings.addButton(
                 'clear-cache',
@@ -74,7 +124,8 @@ export async function registerSettings(): Promise<void> {
                 'Clear Cache',
                 () => {
                     clearTranslationCache();
-                    if (Spicetify.showNotification) {
+                    const showNotifications = storage.get('show-notifications') !== 'false';
+                    if (showNotifications && Spicetify.showNotification) {
                         Spicetify.showNotification('Translation cache cleared!');
                     }
                 }

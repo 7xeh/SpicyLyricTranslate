@@ -19,6 +19,31 @@ export interface TranslationCache {
     };
 }
 
+// API preference types
+export type ApiPreference = 'google' | 'libretranslate' | 'custom';
+
+// API settings
+let preferredApi: ApiPreference = 'google';
+let customApiUrl: string = '';
+
+/**
+ * Set the preferred API for translations
+ */
+export function setPreferredApi(api: ApiPreference, customUrl?: string): void {
+    preferredApi = api;
+    if (customUrl !== undefined) {
+        customApiUrl = customUrl;
+    }
+    console.log(`[SpicyLyricTranslater] API preference set to: ${api}${api === 'custom' ? ` (${customUrl})` : ''}`);
+}
+
+/**
+ * Get current API preference
+ */
+export function getPreferredApi(): { api: ApiPreference; customUrl: string } {
+    return { api: preferredApi, customUrl };
+}
+
 // Cache expiry time: 7 days
 const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000;
 
@@ -238,6 +263,67 @@ async function translateWithLibreTranslate(text: string, targetLang: string): Pr
 }
 
 /**
+ * Translate using a custom 3rd party API
+ * Supports common translation API formats
+ */
+async function translateWithCustomApi(text: string, targetLang: string): Promise<{ translation: string; detectedLang?: string }> {
+    if (!customApiUrl) {
+        throw new Error('Custom API URL not configured');
+    }
+    
+    // Try to detect API format and make appropriate request
+    // Format 1: POST with JSON body (most common)
+    try {
+        const response = await fetch(customApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text,
+                q: text, // Alternative field name
+                source: 'auto',
+                source_lang: 'auto',
+                sourceLang: 'auto',
+                target: targetLang,
+                target_lang: targetLang,
+                targetLang: targetLang,
+                to: targetLang,
+                format: 'text'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Custom API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Try to extract translation from common response formats
+        const translation = data.translatedText || 
+                          data.translated_text || 
+                          data.translation || 
+                          data.result || 
+                          data.text ||
+                          (data.translations && data.translations[0]?.text) ||
+                          (data.data && data.data.translatedText) ||
+                          (Array.isArray(data) && data[0]?.translatedText);
+        
+        if (translation) {
+            return { 
+                translation,
+                detectedLang: data.detectedLanguage || data.detected_language || data.sourceLang || data.src
+            };
+        }
+        
+        throw new Error('Could not parse translation from API response');
+    } catch (error) {
+        console.error('[SpicyLyricTranslater] Custom API error:', error);
+        throw error;
+    }
+}
+
+/**
  * Check if detected language matches target language
  * Handles language variants (e.g., zh and zh-TW both start with 'zh')
  */
@@ -253,6 +339,7 @@ function isSameLanguage(detected: string, target: string): boolean {
 /**
  * Main translation function with caching and fallback
  * Skips translation if source language matches target language
+ * Uses preferred API based on settings
  */
 export async function translateText(text: string, targetLang: string): Promise<TranslationResult> {
     // Check cache first
@@ -265,13 +352,48 @@ export async function translateText(text: string, targetLang: string): Promise<T
         };
     }
     
-    // Try Google Translate first
-    try {
+    // Define translation attempts based on preferred API
+    const tryGoogle = async () => {
         const result = await translateWithGoogle(text, targetLang);
+        return { translation: result.translation, detectedLang: result.detectedLang };
+    };
+    
+    const tryLibreTranslate = async () => {
+        const translation = await translateWithLibreTranslate(text, targetLang);
+        return { translation, detectedLang: undefined };
+    };
+    
+    const tryCustom = async () => {
+        const result = await translateWithCustomApi(text, targetLang);
+        return { translation: result.translation, detectedLang: result.detectedLang };
+    };
+    
+    // Order APIs based on preference
+    let primaryApi: () => Promise<{ translation: string; detectedLang?: string }>;
+    let fallbackApis: (() => Promise<{ translation: string; detectedLang?: string }>)[] = [];
+    
+    switch (preferredApi) {
+        case 'libretranslate':
+            primaryApi = tryLibreTranslate;
+            fallbackApis = [tryGoogle];
+            break;
+        case 'custom':
+            primaryApi = tryCustom;
+            fallbackApis = [tryGoogle, tryLibreTranslate];
+            break;
+        case 'google':
+        default:
+            primaryApi = tryGoogle;
+            fallbackApis = [tryLibreTranslate];
+            break;
+    }
+    
+    // Try primary API first
+    try {
+        const result = await primaryApi();
         
         // Skip if source language is same as target
-        if (isSameLanguage(result.detectedLang, targetLang)) {
-            // Cache as-is to avoid re-checking
+        if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
             cacheTranslation(text, targetLang, text);
             return {
                 originalText: text,
@@ -288,22 +410,39 @@ export async function translateText(text: string, targetLang: string): Promise<T
             detectedLanguage: result.detectedLang,
             targetLanguage: targetLang
         };
-    } catch (googleError) {
-        console.warn('[SpicyLyricTranslater] Google Translate failed, trying fallback:', googleError);
+    } catch (primaryError) {
+        console.warn(`[SpicyLyricTranslater] Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
         
-        // Try LibreTranslate as fallback
-        try {
-            const translation = await translateWithLibreTranslate(text, targetLang);
-            cacheTranslation(text, targetLang, translation);
-            return {
-                originalText: text,
-                translatedText: translation,
-                targetLanguage: targetLang
-            };
-        } catch (libreError) {
-            console.error('[SpicyLyricTranslater] All translation services failed:', libreError);
-            throw new Error('Translation failed. Please try again later.');
+        // Try fallback APIs
+        for (const fallbackApi of fallbackApis) {
+            try {
+                const result = await fallbackApi();
+                
+                if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
+                    cacheTranslation(text, targetLang, text);
+                    return {
+                        originalText: text,
+                        translatedText: text,
+                        detectedLanguage: result.detectedLang,
+                        targetLanguage: targetLang
+                    };
+                }
+                
+                cacheTranslation(text, targetLang, result.translation);
+                return {
+                    originalText: text,
+                    translatedText: result.translation,
+                    detectedLanguage: result.detectedLang,
+                    targetLanguage: targetLang
+                };
+            } catch (fallbackError) {
+                console.warn('[SpicyLyricTranslater] Fallback API failed:', fallbackError);
+                continue;
+            }
         }
+        
+        console.error('[SpicyLyricTranslater] All translation services failed');
+        throw new Error('Translation failed. Please try again later.');
     }
 }
 
@@ -387,5 +526,7 @@ export default {
     translateText,
     translateLyrics,
     clearTranslationCache,
+    setPreferredApi,
+    getPreferredApi,
     SUPPORTED_LANGUAGES
 };

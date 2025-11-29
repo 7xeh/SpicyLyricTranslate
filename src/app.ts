@@ -8,7 +8,7 @@
 
 import { Icons } from './utils/icons';
 import { storage } from './utils/storage';
-import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache } from './utils/translator';
+import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './utils/translator';
 import { injectStyles } from './styles/main';
 
 // Extension state
@@ -18,6 +18,9 @@ interface ExtensionState {
     targetLanguage: string;
     showOriginal: boolean;
     autoTranslate: boolean;
+    showNotifications: boolean;
+    preferredApi: 'google' | 'libretranslate' | 'custom';
+    customApiUrl: string;
     lastTranslatedSongUri: string | null;
     translatedLyrics: Map<string, string>;
 }
@@ -28,6 +31,9 @@ const state: ExtensionState = {
     targetLanguage: storage.get('target-language') || 'en',
     showOriginal: storage.get('show-original') === 'true',
     autoTranslate: storage.get('auto-translate') === 'true',
+    showNotifications: storage.get('show-notifications') !== 'false', // Default to true
+    preferredApi: (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google',
+    customApiUrl: storage.get('custom-api-url') || '',
     lastTranslatedSongUri: null,
     translatedLyrics: new Map()
 };
@@ -68,24 +74,31 @@ function waitForElement(selector: string, timeout: number = 10000): Promise<Elem
 }
 
 /**
- * Check if Spicy Lyrics page is open
+ * Check if Spicy Lyrics page is open (including Cinema View)
  */
 function isSpicyLyricsOpen(): boolean {
-    return !!document.querySelector('#SpicyLyricsPage');
+    return !!(document.querySelector('#SpicyLyricsPage') || 
+              document.querySelector('.Cinema--Container') ||
+              document.querySelector('.spicy-lyrics-cinema'));
 }
 
 /**
  * Get the ViewControls element from Spicy Lyrics
  */
 function getViewControls(): HTMLElement | null {
-    return document.querySelector('#SpicyLyricsPage .ViewControls');
+    return document.querySelector('#SpicyLyricsPage .ViewControls') ||
+           document.querySelector('.Cinema--Container .ViewControls') ||
+           document.querySelector('.ViewControls');
 }
 
 /**
  * Get the lyrics content container
  */
 function getLyricsContent(): HTMLElement | null {
-    return document.querySelector('#SpicyLyricsPage .LyricsContent');
+    return document.querySelector('#SpicyLyricsPage .LyricsContent') ||
+           document.querySelector('.Cinema--Container .LyricsContent') ||
+           document.querySelector('.LyricsContainer') ||
+           document.querySelector('.LyricsContent');
 }
 
 /**
@@ -199,11 +212,31 @@ async function handleTranslateToggle(): Promise<void> {
 }
 
 /**
- * Get lyrics lines from the content
+ * Get lyrics lines from the content (supports both normal and Cinema View)
  */
 function getLyricsLines(): NodeListOf<Element> {
-    // Spicy Lyrics uses lowercase 'line' class
-    const lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+    // Try multiple selectors for different views
+    let lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+    
+    // Cinema View selectors
+    if (lines.length === 0) {
+        lines = document.querySelectorAll('.Cinema--Container .LyricsContent .line:not(.musical-line)');
+    }
+    if (lines.length === 0) {
+        lines = document.querySelectorAll('.Cinema--Container .line:not(.musical-line)');
+    }
+    if (lines.length === 0) {
+        lines = document.querySelectorAll('.LyricsContent .line:not(.musical-line)');
+    }
+    if (lines.length === 0) {
+        lines = document.querySelectorAll('.LyricsContainer .line:not(.musical-line)');
+    }
+    // Generic fallback
+    if (lines.length === 0) {
+        lines = document.querySelectorAll('.line:not(.musical-line)');
+    }
+    
+    console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines`);
     return lines;
 }
 
@@ -316,13 +349,13 @@ async function translateCurrentLyrics(): Promise<void> {
         // Apply translations to DOM
         applyTranslations(lines);
         
-        // Show notification
-        if (typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+        // Show notification if enabled
+        if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
             Spicetify.showNotification('Lyrics translated successfully!');
         }
     } catch (error) {
         console.error('[SpicyLyricTranslater] Translation failed:', error);
-        if (typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+        if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
             Spicetify.showNotification('Translation failed. Please try again.', true);
         }
     } finally {
@@ -338,6 +371,7 @@ async function translateCurrentLyrics(): Promise<void> {
 
 /**
  * Apply translations to the lyrics DOM
+ * Respects showOriginal setting while keeping line structure for Spicy Lyrics
  */
 function applyTranslations(lines: NodeListOf<Element>): void {
     lines.forEach((line, index) => {
@@ -345,172 +379,100 @@ function applyTranslations(lines: NodeListOf<Element>): void {
         const translatedText = state.translatedLyrics.get(originalText);
         
         if (translatedText && translatedText !== originalText) {
-            // Remove existing translation if any
+            // Remove existing translation elements
             const existingTranslation = line.querySelector('.spicy-translation-container');
             if (existingTranslation) {
                 existingTranslation.remove();
             }
             
+            // Restore any previously replaced text first
+            restoreLineText(line);
+            
             // Store original text as data attribute for restoration
             (line as HTMLElement).dataset.originalText = originalText;
-            // Store line index for seeking
             (line as HTMLElement).dataset.lineIndex = index.toString();
             
             if (state.showOriginal) {
-                // Show both: original + translation below
+                // Show both: original stays visible, translation appears below
                 const translationSpan = document.createElement('span');
                 translationSpan.className = 'spicy-translation-container spicy-inline-translation';
                 translationSpan.textContent = translatedText;
-                // Add click handler to seek
-                translationSpan.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    seekToLine(line as HTMLElement);
-                });
                 line.appendChild(translationSpan);
             } else {
-                // Hide original content and show only translation
-                // Get all direct children that contain the lyrics (words, syllables, or text)
-                const originalElements = line.querySelectorAll('.word, .syllable');
+                // Replace text content but keep the element structure
+                // This preserves Spicy Lyrics' highlighting
+                const wordElements = line.querySelectorAll('.word:not(.dot)');
                 
-                if (originalElements.length > 0) {
-                    // Hide all original word/syllable elements
-                    originalElements.forEach(el => {
-                        (el as HTMLElement).classList.add('spicy-hidden-original');
+                if (wordElements.length > 0) {
+                    // Split translation into words to map to word elements
+                    const translatedWords = translatedText.split(/\s+/);
+                    
+                    wordElements.forEach((wordEl, i) => {
+                        const el = wordEl as HTMLElement;
+                        // Store original text
+                        if (!el.dataset.originalWord) {
+                            el.dataset.originalWord = el.textContent || '';
+                        }
+                        // Replace with translated word (or empty if we run out)
+                        if (i < translatedWords.length) {
+                            el.textContent = translatedWords[i] + (i < translatedWords.length - 1 ? ' ' : '');
+                        } else {
+                            el.textContent = '';
+                        }
                     });
-                } else {
-                    // For line-synced lyrics, wrap original content
-                    const originalContent = line.innerHTML;
-                    // Check if we already wrapped it
-                    if (!line.querySelector('.spicy-original-content')) {
-                        const wrapper = document.createElement('span');
-                        wrapper.className = 'spicy-original-content spicy-hidden-original';
-                        wrapper.innerHTML = originalContent;
-                        line.innerHTML = '';
-                        line.appendChild(wrapper);
+                    
+                    // If translation has more words than elements, append rest to last element
+                    if (translatedWords.length > wordElements.length && wordElements.length > 0) {
+                        const lastEl = wordElements[wordElements.length - 1] as HTMLElement;
+                        const extraWords = translatedWords.slice(wordElements.length).join(' ');
+                        lastEl.textContent = (lastEl.textContent || '') + ' ' + extraWords;
                     }
+                } else {
+                    // For syllable or line-synced lyrics, just add translation below
+                    // since we can't easily map syllables
+                    const translationSpan = document.createElement('span');
+                    translationSpan.className = 'spicy-translation-container spicy-inline-translation';
+                    translationSpan.textContent = translatedText;
+                    line.appendChild(translationSpan);
                 }
-                
-                // Add translation as replacement text
-                const translationSpan = document.createElement('span');
-                translationSpan.className = 'spicy-translation-container spicy-translation-replacement';
-                translationSpan.textContent = translatedText;
-                // Add click handler to seek
-                translationSpan.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    seekToLine(line as HTMLElement);
-                });
-                line.appendChild(translationSpan);
             }
-            
-            // Mark line as translated
-            line.classList.add('spicy-translated');
         }
     });
 }
 
 /**
- * Seek to a lyrics line's start time
+ * Restore original text to a line's word elements
  */
-function seekToLine(lineElement: HTMLElement): void {
-    try {
-        // We need to find and click a word/syllable element that has Spicy Lyrics' click handler
-        
-        // Method 1: Find a visible word/syllable element (when showing original)
-        const visibleWord = lineElement.querySelector('.word:not(.spicy-hidden-original):not(.dot), .syllable:not(.spicy-hidden-original)');
-        if (visibleWord) {
-            (visibleWord as HTMLElement).click();
-            return;
+function restoreLineText(line: Element): void {
+    const wordElements = line.querySelectorAll('.word[data-original-word]');
+    wordElements.forEach(wordEl => {
+        const el = wordEl as HTMLElement;
+        if (el.dataset.originalWord !== undefined) {
+            el.textContent = el.dataset.originalWord;
+            delete el.dataset.originalWord;
         }
-        
-        // Method 2: Find hidden word/syllable elements and temporarily enable pointer events
-        const hiddenWord = lineElement.querySelector('.word.spicy-hidden-original, .syllable.spicy-hidden-original');
-        if (hiddenWord) {
-            const el = hiddenWord as HTMLElement;
-            // Temporarily enable pointer events and make visible for click
-            el.classList.remove('spicy-hidden-original');
-            el.style.cssText = 'position: absolute; opacity: 0; pointer-events: auto;';
-            
-            // Use requestAnimationFrame to ensure style is applied before clicking
-            requestAnimationFrame(() => {
-                el.click();
-                // Restore hidden state
-                setTimeout(() => {
-                    el.style.cssText = '';
-                    el.classList.add('spicy-hidden-original');
-                }, 50);
-            });
-            return;
-        }
-        
-        // Method 3: For wrapped content (line-synced), find inner elements
-        const wrappedContent = lineElement.querySelector('.spicy-original-content');
-        if (wrappedContent) {
-            const innerWord = wrappedContent.querySelector('.word, .syllable');
-            if (innerWord) {
-                const el = innerWord as HTMLElement;
-                wrappedContent.classList.remove('spicy-hidden-original');
-                (wrappedContent as HTMLElement).style.cssText = 'position: absolute; opacity: 0; pointer-events: auto;';
-                
-                requestAnimationFrame(() => {
-                    el.click();
-                    setTimeout(() => {
-                        (wrappedContent as HTMLElement).style.cssText = '';
-                        wrappedContent.classList.add('spicy-hidden-original');
-                    }, 50);
-                });
-                return;
-            }
-        }
-        
-        // Method 4: Click the line element itself as fallback
-        // Some Spicy Lyrics versions may have click handlers on the line
-        lineElement.click();
-        
-    } catch (error) {
-        console.error('[SpicyLyricTranslater] Failed to seek:', error);
-    }
+    });
 }
 
 /**
- * Remove translations from lyrics
+ * Remove translations from lyrics and restore original content
  */
 function removeTranslations(): void {
     // Remove translation containers
     const translations = document.querySelectorAll('.spicy-translation-container');
     translations.forEach(el => el.remove());
     
-    // Show hidden original elements
-    const hiddenElements = document.querySelectorAll('.spicy-hidden-original');
-    hiddenElements.forEach(el => {
-        el.classList.remove('spicy-hidden-original');
-    });
-    
-    // Remove wrapped original content and restore
-    const wrappedContent = document.querySelectorAll('.spicy-original-content');
-    wrappedContent.forEach(wrapper => {
-        const parent = wrapper.parentElement;
-        if (parent) {
-            const content = wrapper.innerHTML;
-            wrapper.remove();
-            // Only restore if parent is now empty
-            if (parent.innerHTML.trim() === '') {
-                parent.innerHTML = content;
-            }
+    // Restore original word text
+    const wordElements = document.querySelectorAll('.word[data-original-word]');
+    wordElements.forEach(wordEl => {
+        const el = wordEl as HTMLElement;
+        if (el.dataset.originalWord !== undefined) {
+            el.textContent = el.dataset.originalWord;
+            delete el.dataset.originalWord;
         }
     });
     
-    // Remove translated class from lines
-    const translatedLines = document.querySelectorAll('.spicy-translated');
-    translatedLines.forEach(line => {
-        line.classList.remove('spicy-translated');
-    });
-    
     state.translatedLyrics.clear();
-    
-    const page = document.querySelector('#SpicyLyricsPage');
-    if (page) {
-        page.classList.remove('show-both-lyrics');
-    }
 }
 
 /**
@@ -526,6 +488,12 @@ function showSettingsModal(): void {
         .map(lang => `<option value="${lang.code}" ${lang.code === state.targetLanguage ? 'selected' : ''}>${lang.name}</option>`)
         .join('');
     
+    const apiOptions = `
+        <option value="google" ${state.preferredApi === 'google' ? 'selected' : ''}>Google Translate</option>
+        <option value="libretranslate" ${state.preferredApi === 'libretranslate' ? 'selected' : ''}>LibreTranslate</option>
+        <option value="custom" ${state.preferredApi === 'custom' ? 'selected' : ''}>Custom API</option>
+    `;
+    
     const content = document.createElement('div');
     content.className = 'spicy-translate-settings';
     content.innerHTML = `
@@ -537,6 +505,22 @@ function showSettingsModal(): void {
             <select id="spicy-translate-lang-select">
                 ${languageOptions}
             </select>
+        </div>
+        <div class="setting-item">
+            <div>
+                <div class="setting-label">Preferred API</div>
+                <div class="setting-description">Select the translation service to use</div>
+            </div>
+            <select id="spicy-translate-api-select">
+                ${apiOptions}
+            </select>
+        </div>
+        <div class="setting-item" id="spicy-translate-custom-api-container" style="display: ${state.preferredApi === 'custom' ? 'flex' : 'none'}">
+            <div>
+                <div class="setting-label">Custom API URL</div>
+                <div class="setting-description">Enter your custom translation API endpoint</div>
+            </div>
+            <input type="text" id="spicy-translate-custom-api-url" placeholder="https://your-api.com/translate" value="${state.customApiUrl}" />
         </div>
         <div class="setting-item">
             <div>
@@ -554,6 +538,13 @@ function showSettingsModal(): void {
         </div>
         <div class="setting-item">
             <div>
+                <div class="setting-label">Show Notifications</div>
+                <div class="setting-description">Show notifications for translation status</div>
+            </div>
+            <div class="toggle-switch ${state.showNotifications ? 'active' : ''}" id="spicy-translate-notifications"></div>
+        </div>
+        <div class="setting-item">
+            <div>
                 <div class="setting-label">Clear Cache</div>
                 <div class="setting-description">Clear cached translations to free up space</div>
             </div>
@@ -564,8 +555,12 @@ function showSettingsModal(): void {
     // Add event listeners
     setTimeout(() => {
         const langSelect = document.getElementById('spicy-translate-lang-select') as HTMLSelectElement;
+        const apiSelect = document.getElementById('spicy-translate-api-select') as HTMLSelectElement;
+        const customApiContainer = document.getElementById('spicy-translate-custom-api-container');
+        const customApiUrlInput = document.getElementById('spicy-translate-custom-api-url') as HTMLInputElement;
         const showOriginalToggle = document.getElementById('spicy-translate-show-original');
         const autoToggle = document.getElementById('spicy-translate-auto');
+        const notificationsToggle = document.getElementById('spicy-translate-notifications');
         const clearCacheBtn = document.getElementById('spicy-translate-clear-cache');
         
         if (langSelect) {
@@ -580,11 +575,40 @@ function showSettingsModal(): void {
             });
         }
         
+        if (apiSelect) {
+            apiSelect.addEventListener('change', () => {
+                state.preferredApi = apiSelect.value as 'google' | 'libretranslate' | 'custom';
+                storage.set('preferred-api', state.preferredApi);
+                setPreferredApi(state.preferredApi, state.customApiUrl);
+                
+                // Show/hide custom API URL input
+                if (customApiContainer) {
+                    customApiContainer.style.display = state.preferredApi === 'custom' ? 'flex' : 'none';
+                }
+            });
+        }
+        
+        if (customApiUrlInput) {
+            customApiUrlInput.addEventListener('change', () => {
+                state.customApiUrl = customApiUrlInput.value;
+                storage.set('custom-api-url', state.customApiUrl);
+                setPreferredApi(state.preferredApi, state.customApiUrl);
+            });
+        }
+        
         if (showOriginalToggle) {
             showOriginalToggle.addEventListener('click', () => {
                 state.showOriginal = !state.showOriginal;
                 storage.set('show-original', state.showOriginal.toString());
                 showOriginalToggle.classList.toggle('active', state.showOriginal);
+                
+                // Re-apply translations with new setting if enabled
+                if (state.isEnabled && state.translatedLyrics.size > 0) {
+                    removeTranslations();
+                    // Restore the stored translations
+                    const lines = getLyricsLines();
+                    applyTranslations(lines);
+                }
             });
         }
         
@@ -596,10 +620,18 @@ function showSettingsModal(): void {
             });
         }
         
+        if (notificationsToggle) {
+            notificationsToggle.addEventListener('click', () => {
+                state.showNotifications = !state.showNotifications;
+                storage.set('show-notifications', state.showNotifications.toString());
+                notificationsToggle.classList.toggle('active', state.showNotifications);
+            });
+        }
+        
         if (clearCacheBtn) {
             clearCacheBtn.addEventListener('click', () => {
                 clearTranslationCache();
-                if (Spicetify.showNotification) {
+                if (state.showNotifications && Spicetify.showNotification) {
                     Spicetify.showNotification('Translation cache cleared!');
                 }
             });
@@ -689,17 +721,30 @@ function setupLyricsObserver(): void {
 }
 
 /**
- * Handle Spicy Lyrics page open
+ * Handle Spicy Lyrics page open (including Cinema View)
  */
 async function onSpicyLyricsOpen(): Promise<void> {
-    // Wait for ViewControls to be available
-    await waitForElement('#SpicyLyricsPage .ViewControls');
+    console.log('[SpicyLyricTranslater] Lyrics view detected, initializing...');
     
-    // Insert our button
-    insertTranslateButton();
+    // Wait for ViewControls to be available - try multiple selectors
+    let viewControls = await waitForElement('#SpicyLyricsPage .ViewControls', 3000);
+    if (!viewControls) {
+        viewControls = await waitForElement('.Cinema--Container .ViewControls', 3000);
+    }
+    if (!viewControls) {
+        viewControls = await waitForElement('.ViewControls', 3000);
+    }
     
-    // Setup observers
-    setupViewControlsObserver();
+    if (viewControls) {
+        console.log('[SpicyLyricTranslater] ViewControls found, inserting button');
+        // Insert our button
+        insertTranslateButton();
+        // Setup observers
+        setupViewControlsObserver();
+    } else {
+        console.log('[SpicyLyricTranslater] ViewControls not found, will retry...');
+    }
+    
     setupLyricsObserver();
     
     // Auto-translate if auto-translate setting is on
@@ -715,7 +760,7 @@ async function onSpicyLyricsOpen(): Promise<void> {
                 }
                 translateCurrentLyrics();
             }
-        }, 1000);
+        }, 1500);
     }
 }
 
@@ -813,11 +858,14 @@ async function registerSettingsMenu(): Promise<void> {
 }
 
 /**
- * Setup page observer to detect Spicy Lyrics open/close
+ * Setup page observer to detect Spicy Lyrics open/close (including Cinema View)
  */
 function setupPageObserver(): void {
+    console.log('[SpicyLyricTranslater] Setting up page observer...');
+    
     // Check if already open
     if (isSpicyLyricsOpen()) {
+        console.log('[SpicyLyricTranslater] Lyrics view already open');
         onSpicyLyricsOpen();
     }
     
@@ -825,24 +873,27 @@ function setupPageObserver(): void {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             if (mutation.type === 'childList') {
-                // Check for Spicy Lyrics page
-                const added = Array.from(mutation.addedNodes).some(
-                    node => node.nodeType === Node.ELEMENT_NODE && 
-                    ((node as Element).id === 'SpicyLyricsPage' || 
-                     (node as Element).querySelector('#SpicyLyricsPage'))
-                );
+                // Check for Spicy Lyrics page or Cinema View
+                const isLyricsNode = (node: Node): boolean => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+                    const el = node as Element;
+                    return el.id === 'SpicyLyricsPage' || 
+                           el.classList?.contains('Cinema--Container') ||
+                           el.classList?.contains('spicy-lyrics-cinema') ||
+                           !!el.querySelector('#SpicyLyricsPage') ||
+                           !!el.querySelector('.Cinema--Container');
+                };
                 
-                const removed = Array.from(mutation.removedNodes).some(
-                    node => node.nodeType === Node.ELEMENT_NODE && 
-                    ((node as Element).id === 'SpicyLyricsPage' || 
-                     (node as Element).querySelector('#SpicyLyricsPage'))
-                );
+                const added = Array.from(mutation.addedNodes).some(isLyricsNode);
+                const removed = Array.from(mutation.removedNodes).some(isLyricsNode);
                 
                 if (added) {
+                    console.log('[SpicyLyricTranslater] Lyrics view opened');
                     onSpicyLyricsOpen();
                 }
                 
                 if (removed) {
+                    console.log('[SpicyLyricTranslater] Lyrics view closed');
                     onSpicyLyricsClose();
                 }
             }
@@ -871,6 +922,12 @@ async function initialize(): Promise<void> {
     state.targetLanguage = storage.get('target-language') || 'en';
     state.showOriginal = storage.get('show-original') === 'true';
     state.autoTranslate = storage.get('auto-translate') === 'true';
+    state.showNotifications = storage.get('show-notifications') !== 'false';
+    state.preferredApi = (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google';
+    state.customApiUrl = storage.get('custom-api-url') || '';
+    
+    // Set the preferred API in translator
+    setPreferredApi(state.preferredApi, state.customApiUrl);
     
     // Inject styles
     injectStyles();

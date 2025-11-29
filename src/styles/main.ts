@@ -1,92 +1,22 @@
 /**
  * CSS Styles for Spicy Lyric Translater
+ * Minimal styles to avoid interference with Spicy Lyrics' own styling
  */
 
 export const styles = `
-/* Spicy Lyric Translater Styles */
-
-/* Translation toggle button in ViewControls */
-#SpicyLyricsPage .ViewControls #TranslateToggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#SpicyLyricsPage .ViewControls #TranslateToggle.active svg {
-    color: var(--spice-button-active, #1db954);
-}
-
-#SpicyLyricsPage .ViewControls #TranslateToggle:hover {
-    transform: scale(1.1);
-}
-
-#SpicyLyricsPage .ViewControls #TranslateToggle svg {
-    width: 16px;
-    height: 16px;
-}
+/* Spicy Lyric Translater - Minimal Styles */
 
 /* Loading animation for translate button */
 @keyframes spicy-translate-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.spicy-translate-loading {
-    animation: spicy-translate-spin 1s linear infinite;
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 #TranslateToggle.loading svg {
     animation: spicy-translate-spin 1s linear infinite;
 }
 
-/* Translated lyrics container */
-.spicy-translated-line {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.spicy-translated-line .original-text {
-    opacity: 0.6;
-    font-size: 0.85em;
-}
-
-.spicy-translated-line .translated-text {
-    color: var(--spice-text, #fff);
-}
-
-/* When showing both original and translated */
-#SpicyLyricsPage.show-both-lyrics .LyricsContent .Line {
-    flex-direction: column;
-    gap: 4px;
-}
-
-#SpicyLyricsPage.show-both-lyrics .LyricsContent .Line .translated-line {
-    font-size: 0.9em;
-    opacity: 0.8;
-    color: var(--spice-subtext, #b3b3b3);
-}
-
-/* Translation indicator badge */
-.spicy-translate-badge {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: var(--spice-button-active, #1db954);
-    color: #000;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: bold;
-    text-transform: uppercase;
-    z-index: 10;
-}
-
-/* Settings modal styles */
+/* Settings modal styles - these are in our own modal */
 .spicy-translate-settings {
     padding: 16px;
 }
@@ -114,6 +44,7 @@ export const styles = `
 }
 
 .spicy-translate-settings select,
+.spicy-translate-settings input[type="text"],
 .spicy-translate-settings button {
     padding: 8px 16px;
     border-radius: 4px;
@@ -122,6 +53,10 @@ export const styles = `
     color: var(--spice-text, #fff);
     cursor: pointer;
     font-size: 14px;
+}
+
+.spicy-translate-settings input[type="text"] {
+    min-width: 200px;
 }
 
 .spicy-translate-settings select:hover,
@@ -138,6 +73,7 @@ export const styles = `
     border-radius: 12px;
     cursor: pointer;
     transition: background 0.2s;
+    flex-shrink: 0;
 }
 
 .spicy-translate-settings .toggle-switch.active {
@@ -160,92 +96,24 @@ export const styles = `
     transform: translateX(24px);
 }
 
-/* Error message styles */
-.spicy-translate-error {
-    color: #ff4444;
-    padding: 8px;
-    text-align: center;
-    font-size: 12px;
-}
-
-/* Inline translation display */
+/* Inline translation - minimal styling, inherits from Spicy Lyrics */
 .spicy-inline-translation {
     display: block;
-    font-size: 0.85em;
-    opacity: 0.7;
-    margin-top: 4px;
-    font-style: italic;
-    cursor: pointer;
+    font-size: 0.8em;
+    opacity: 0.65;
+    margin-top: 2px;
 }
 
-/* Hide original content when showing translation only */
+/* Hide original content - screen reader accessible hide */
 .spicy-hidden-original {
     position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    padding: 0 !important;
-    margin: -1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    white-space: nowrap !important;
-    border: 0 !important;
     opacity: 0 !important;
     pointer-events: none !important;
 }
 
-/* Translation replacement (when hiding original) */
+/* Translation replacement - inherit all styles from parent */
 .spicy-translation-replacement {
-    display: inline !important;
-    font-style: normal !important;
-    opacity: 1 !important;
-    font-size: 1em !important;
-    margin-top: 0 !important;
-    cursor: pointer;
-}
-
-/* Ensure translated lines maintain proper styling and are clickable */
-.line.spicy-translated {
-    display: flex;
-    flex-direction: column;
-    align-items: inherit;
-    cursor: pointer;
-}
-
-.line.spicy-translated .spicy-translation-replacement {
-    display: block;
-    width: 100%;
-}
-
-/* Translation container is clickable */
-.spicy-translation-container {
-    cursor: pointer;
-}
-
-.spicy-translation-container:hover {
-    opacity: 0.8;
-}
-
-/* Translation loading overlay */
-.spicy-translate-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-}
-
-.spicy-translate-overlay .loader {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--spice-button, #535353);
-    border-top-color: var(--spice-button-active, #1db954);
-    border-radius: 50%;
-    animation: spicy-translate-spin 1s linear infinite;
+    /* Inherit everything from parent line element */
 }
 `;
 

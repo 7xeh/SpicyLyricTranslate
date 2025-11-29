@@ -5,12 +5,12 @@
   "main": "dist/spicy-lyric-translater.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/spicy-lyric-translater.git"
+    "url": "https://github.com/7xeh/spicy-lyric-translater.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/spicy-lyric-translater/issues"
+    "url": "https://github.com/7xeh/spicy-lyric-translater/issues"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/spicy-lyric-translater#readme",
+  "homepage": "https://github.com/7xeh/spicy-lyric-translater#readme",
   "scripts": {
     "build": "esbuild src/app.ts --bundle --outfile=dist/spicy-lyric-translater.js --format=iife --global-name=SpicyLyricTranslater --platform=browser --target=es2020",
     "build:watch": "esbuild src/app.ts --bundle --outfile=dist/spicy-lyric-translater.js --format=iife --global-name=SpicyLyricTranslater --platform=browser --target=es2020 --watch",

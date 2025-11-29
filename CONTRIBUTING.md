@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/spicy-lyric-translater.git
+   git clone https://github.com/7xeh/spicy-lyric-translater.git
    cd spicy-lyric-translater
    ```
 3. Install dependencies:

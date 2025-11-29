@@ -83,31 +83,6 @@ Right-click the translate button to access:
 | Vietnamese | vi | Thai | th |
 | Indonesian | id | Ukrainian | uk |
 
-## API
-
-A global API is available for advanced usage:
-
-```javascript
-// Enable/disable translation
-SpicyLyricTranslater.enable();
-SpicyLyricTranslater.disable();
-
-// Set target language
-SpicyLyricTranslater.setLanguage('ja'); // Japanese
-
-// Manually trigger translation
-SpicyLyricTranslater.translate();
-
-// Open settings
-SpicyLyricTranslater.showSettings();
-
-// Clear cache
-SpicyLyricTranslater.clearCache();
-
-// Get current state
-SpicyLyricTranslater.getState();
-```
-
 ## How It Works
 
 The extension uses Google Translate's API with LibreTranslate as a fallback. It detects the source language and skips translation if it matches your target language (e.g., won't translate English to English). Translations are cached locally for 7 days.
@@ -134,9 +109,6 @@ npm run deploy
 - [Spicetify](https://spicetify.app/)
 - Translation powered by Google Translate
 
-## License
-
-MIT License - See [LICENSE](LICENSE) for details
 
 ## Contributing
 

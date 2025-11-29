@@ -23,7 +23,7 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 ### Easy Install (Recommended)
 
-1. Download [`spicy-lyric-translater.js`](./builds/spicy-lyric-translater.js) from the `builds` folder
+1. Download [`spicy-lyric-translater.js`](./dist/spicy-lyric-translater.js) from the `builds` folder
 2. Copy it to your Spicetify Extensions folder:
    - **Windows:** `%APPDATA%\spicetify\Extensions\`
    - **Linux/macOS:** `~/.config/spicetify/Extensions/`

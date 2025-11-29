@@ -161,13 +161,12 @@ var SpicyLyricTranslater = (() => {
   async function translateWithGoogle(text, targetLang) {
     const encodedText = encodeURIComponent(text);
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodedText}`;
-    console.log("[SpicyLyricTranslater] Fetching translation from Google...");
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Google Translate API error: ${response.status}`);
     }
     const data = await response.json();
-    console.log("[SpicyLyricTranslater] Google response:", JSON.stringify(data).substring(0, 200));
+    const detectedLang = data[2] || "unknown";
     if (data && data[0]) {
       let translation = "";
       for (const sentence of data[0]) {
@@ -176,8 +175,7 @@ var SpicyLyricTranslater = (() => {
         }
       }
       if (translation) {
-        console.log("[SpicyLyricTranslater] Translated to:", translation.substring(0, 50));
-        return translation;
+        return { translation, detectedLang };
       }
     }
     throw new Error("Invalid response from Google Translate");
@@ -202,6 +200,13 @@ var SpicyLyricTranslater = (() => {
     const data = await response.json();
     return data.translatedText;
   }
+  function isSameLanguage(detected, target) {
+    if (!detected || detected === "unknown")
+      return false;
+    const normalizedDetected = detected.toLowerCase().split("-")[0];
+    const normalizedTarget = target.toLowerCase().split("-")[0];
+    return normalizedDetected === normalizedTarget;
+  }
   async function translateText(text, targetLang) {
     const cached = getCachedTranslation(text, targetLang);
     if (cached) {
@@ -212,11 +217,21 @@ var SpicyLyricTranslater = (() => {
       };
     }
     try {
-      const translation = await translateWithGoogle(text, targetLang);
-      cacheTranslation(text, targetLang, translation);
+      const result = await translateWithGoogle(text, targetLang);
+      if (isSameLanguage(result.detectedLang, targetLang)) {
+        cacheTranslation(text, targetLang, text);
+        return {
+          originalText: text,
+          translatedText: text,
+          detectedLanguage: result.detectedLang,
+          targetLanguage: targetLang
+        };
+      }
+      cacheTranslation(text, targetLang, result.translation);
       return {
         originalText: text,
-        translatedText: translation,
+        translatedText: result.translation,
+        detectedLanguage: result.detectedLang,
         targetLanguage: targetLang
       };
     } catch (googleError) {

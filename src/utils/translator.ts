@@ -90,12 +90,11 @@ function cacheTranslation(text: string, targetLang: string, translation: string)
 
 /**
  * Translate using Google Translate (free API via scraping)
+ * Returns both the translation and detected source language
  */
-async function translateWithGoogle(text: string, targetLang: string): Promise<string> {
+async function translateWithGoogle(text: string, targetLang: string): Promise<{ translation: string; detectedLang: string }> {
     const encodedText = encodeURIComponent(text);
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodedText}`;
-    
-    console.log('[SpicyLyricTranslater] Fetching translation from Google...');
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -103,9 +102,11 @@ async function translateWithGoogle(text: string, targetLang: string): Promise<st
     }
     
     const data = await response.json();
-    console.log('[SpicyLyricTranslater] Google response:', JSON.stringify(data).substring(0, 200));
     
     // Parse the response - Google returns an array of arrays
+    // data[0] contains translation segments, data[2] contains detected language
+    const detectedLang = data[2] || 'unknown';
+    
     if (data && data[0]) {
         let translation = '';
         for (const sentence of data[0]) {
@@ -114,8 +115,7 @@ async function translateWithGoogle(text: string, targetLang: string): Promise<st
             }
         }
         if (translation) {
-            console.log('[SpicyLyricTranslater] Translated to:', translation.substring(0, 50));
-            return translation;
+            return { translation, detectedLang };
         }
     }
     
@@ -151,7 +151,21 @@ async function translateWithLibreTranslate(text: string, targetLang: string): Pr
 }
 
 /**
+ * Check if detected language matches target language
+ * Handles language variants (e.g., zh and zh-TW both start with 'zh')
+ */
+function isSameLanguage(detected: string, target: string): boolean {
+    if (!detected || detected === 'unknown') return false;
+    
+    const normalizedDetected = detected.toLowerCase().split('-')[0];
+    const normalizedTarget = target.toLowerCase().split('-')[0];
+    
+    return normalizedDetected === normalizedTarget;
+}
+
+/**
  * Main translation function with caching and fallback
+ * Skips translation if source language matches target language
  */
 export async function translateText(text: string, targetLang: string): Promise<TranslationResult> {
     // Check cache first
@@ -166,11 +180,25 @@ export async function translateText(text: string, targetLang: string): Promise<T
     
     // Try Google Translate first
     try {
-        const translation = await translateWithGoogle(text, targetLang);
-        cacheTranslation(text, targetLang, translation);
+        const result = await translateWithGoogle(text, targetLang);
+        
+        // Skip if source language is same as target
+        if (isSameLanguage(result.detectedLang, targetLang)) {
+            // Cache as-is to avoid re-checking
+            cacheTranslation(text, targetLang, text);
+            return {
+                originalText: text,
+                translatedText: text,
+                detectedLanguage: result.detectedLang,
+                targetLanguage: targetLang
+            };
+        }
+        
+        cacheTranslation(text, targetLang, result.translation);
         return {
             originalText: text,
-            translatedText: translation,
+            translatedText: result.translation,
+            detectedLanguage: result.detectedLang,
             targetLanguage: targetLang
         };
     } catch (googleError) {

@@ -484,7 +484,7 @@ var SpicyLyricTranslater = (() => {
     opacity: 0.7;
     margin-top: 4px;
     font-style: italic;
-    pointer-events: none;
+    cursor: pointer;
 }
 
 /* Hide original content when showing translation only */
@@ -499,7 +499,7 @@ var SpicyLyricTranslater = (() => {
     opacity: 1 !important;
     font-size: 1em !important;
     margin-top: 0 !important;
-    pointer-events: none;
+    cursor: pointer;
 }
 
 /* Ensure translated lines maintain proper styling and are clickable */
@@ -513,17 +513,15 @@ var SpicyLyricTranslater = (() => {
 .line.spicy-translated .spicy-translation-replacement {
     display: block;
     width: 100%;
-    pointer-events: none;
 }
 
-/* Ensure translation container doesn't block clicks */
+/* Translation container is clickable */
 .spicy-translation-container {
-    pointer-events: none;
+    cursor: pointer;
 }
 
-/* Original content wrapper shouldn't block clicks either */
-.spicy-original-content {
-    pointer-events: none;
+.spicy-translation-container:hover {
+    opacity: 0.8;
 }
 
 /* Translation loading overlay */
@@ -770,7 +768,7 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function applyTranslations(lines) {
-    lines.forEach((line) => {
+    lines.forEach((line, index) => {
       const originalText = extractLineText(line);
       const translatedText = state.translatedLyrics.get(originalText);
       if (translatedText && translatedText !== originalText) {
@@ -779,10 +777,15 @@ var SpicyLyricTranslater = (() => {
           existingTranslation.remove();
         }
         line.dataset.originalText = originalText;
+        line.dataset.lineIndex = index.toString();
         if (state.showOriginal) {
           const translationSpan = document.createElement("span");
           translationSpan.className = "spicy-translation-container spicy-inline-translation";
           translationSpan.textContent = translatedText;
+          translationSpan.addEventListener("click", (e) => {
+            e.stopPropagation();
+            seekToLine(line);
+          });
           line.appendChild(translationSpan);
         } else {
           const originalElements = line.querySelectorAll(".word, .syllable");
@@ -803,11 +806,52 @@ var SpicyLyricTranslater = (() => {
           const translationSpan = document.createElement("span");
           translationSpan.className = "spicy-translation-container spicy-translation-replacement";
           translationSpan.textContent = translatedText;
+          translationSpan.addEventListener("click", (e) => {
+            e.stopPropagation();
+            seekToLine(line);
+          });
           line.appendChild(translationSpan);
         }
         line.classList.add("spicy-translated");
       }
     });
+  }
+  function seekToLine(lineElement) {
+    try {
+      const lineIndex = parseInt(lineElement.dataset.lineIndex || "0");
+      const win = window;
+      if (win._sB_cc && win._sB_cc["53le7r7i"]) {
+        const spicyApi = win._sB_cc["53le7r7i"];
+        if (typeof spicyApi.seekToLine === "function") {
+          spicyApi.seekToLine(lineIndex);
+          return;
+        }
+      }
+      const allLines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
+      const linesArray = Array.from(allLines);
+      const currentIndex = linesArray.indexOf(lineElement);
+      const hiddenOriginal = lineElement.querySelector(".spicy-hidden-original");
+      if (hiddenOriginal) {
+        hiddenOriginal.style.display = "block";
+        hiddenOriginal.style.opacity = "0";
+        hiddenOriginal.style.position = "absolute";
+        hiddenOriginal.click();
+        setTimeout(() => {
+          hiddenOriginal.style.display = "";
+          hiddenOriginal.style.opacity = "";
+          hiddenOriginal.style.position = "";
+        }, 10);
+        return;
+      }
+      const clickEvent = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      lineElement.dispatchEvent(clickEvent);
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Failed to seek:", error);
+    }
   }
   function removeTranslations() {
     const translations = document.querySelectorAll(".spicy-translation-container");

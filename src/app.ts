@@ -340,7 +340,7 @@ async function translateCurrentLyrics(): Promise<void> {
  * Apply translations to the lyrics DOM
  */
 function applyTranslations(lines: NodeListOf<Element>): void {
-    lines.forEach(line => {
+    lines.forEach((line, index) => {
         const originalText = extractLineText(line);
         const translatedText = state.translatedLyrics.get(originalText);
         
@@ -353,12 +353,19 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             
             // Store original text as data attribute for restoration
             (line as HTMLElement).dataset.originalText = originalText;
+            // Store line index for seeking
+            (line as HTMLElement).dataset.lineIndex = index.toString();
             
             if (state.showOriginal) {
                 // Show both: original + translation below
                 const translationSpan = document.createElement('span');
                 translationSpan.className = 'spicy-translation-container spicy-inline-translation';
                 translationSpan.textContent = translatedText;
+                // Add click handler to seek
+                translationSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    seekToLine(line as HTMLElement);
+                });
                 line.appendChild(translationSpan);
             } else {
                 // Hide original content and show only translation
@@ -387,6 +394,11 @@ function applyTranslations(lines: NodeListOf<Element>): void {
                 const translationSpan = document.createElement('span');
                 translationSpan.className = 'spicy-translation-container spicy-translation-replacement';
                 translationSpan.textContent = translatedText;
+                // Add click handler to seek
+                translationSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    seekToLine(line as HTMLElement);
+                });
                 line.appendChild(translationSpan);
             }
             
@@ -394,6 +406,62 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             line.classList.add('spicy-translated');
         }
     });
+}
+
+/**
+ * Seek to a lyrics line's start time
+ */
+function seekToLine(lineElement: HTMLElement): void {
+    try {
+        // Try to get time from Spicy Lyrics' LyricsObject via the exposed API
+        // The line index can help us find the corresponding time
+        const lineIndex = parseInt(lineElement.dataset.lineIndex || '0');
+        
+        // Try accessing Spicy Lyrics internal state through window
+        const win = window as any;
+        
+        // Method 1: Try Spicy Lyrics' internal API (if exposed)
+        if (win._sB_cc && win._sB_cc["53le7r7i"]) {
+            const spicyApi = win._sB_cc["53le7r7i"];
+            if (typeof spicyApi.seekToLine === 'function') {
+                spicyApi.seekToLine(lineIndex);
+                return;
+            }
+        }
+        
+        // Method 2: Try to find all lines and get the time from CSS custom properties or data attributes
+        const allLines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+        const linesArray = Array.from(allLines);
+        const currentIndex = linesArray.indexOf(lineElement);
+        
+        // Method 3: Simulate a click on a hidden original element if it exists
+        const hiddenOriginal = lineElement.querySelector('.spicy-hidden-original');
+        if (hiddenOriginal) {
+            // Temporarily show it, click it, hide it again
+            (hiddenOriginal as HTMLElement).style.display = 'block';
+            (hiddenOriginal as HTMLElement).style.opacity = '0';
+            (hiddenOriginal as HTMLElement).style.position = 'absolute';
+            (hiddenOriginal as HTMLElement).click();
+            setTimeout(() => {
+                (hiddenOriginal as HTMLElement).style.display = '';
+                (hiddenOriginal as HTMLElement).style.opacity = '';
+                (hiddenOriginal as HTMLElement).style.position = '';
+            }, 10);
+            return;
+        }
+        
+        // Method 4: Click the line element itself (the parent might have the handler)
+        // Create and dispatch a click event on the line
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+        });
+        lineElement.dispatchEvent(clickEvent);
+        
+    } catch (error) {
+        console.error('[SpicyLyricTranslater] Failed to seek:', error);
+    }
 }
 
 /**

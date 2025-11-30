@@ -5,6 +5,7 @@
 
 export const styles = `
 /* Spicy Lyric Translater - Minimal Styles */
+/* Works in main page, Cinema View, and PIP popout */
 
 /* Loading animation for translate button */
 @keyframes spicy-translate-spin {
@@ -14,6 +15,11 @@ export const styles = `
 
 #TranslateToggle.loading svg {
     animation: spicy-translate-spin 1s linear infinite;
+}
+
+/* Active state for translate button */
+#TranslateToggle.active svg {
+    color: var(--spice-button-active, #1db954);
 }
 
 /* Settings modal styles - these are in our own modal */
@@ -96,24 +102,89 @@ export const styles = `
     transform: translateX(24px);
 }
 
-/* Inline translation - minimal styling, inherits from Spicy Lyrics */
+/* ========================================
+   TRANSLATION DISPLAY STYLES
+   ======================================== */
+
+/* Hide original content completely when showing translation only */
+.spicy-hidden-original {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Translated text - inherits styling from parent line */
+/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
+.spicy-translation-text {
+    display: inline !important;
+    pointer-events: none !important;
+    /* Inherit all text styling from parent */
+}
+
+/* Inline translation (shown below original when showOriginal is true) */
 .spicy-inline-translation {
     display: block;
     font-size: 0.8em;
     opacity: 0.65;
-    margin-top: 2px;
-}
-
-/* Hide original content - screen reader accessible hide */
-.spicy-hidden-original {
-    position: absolute !important;
-    opacity: 0 !important;
+    margin-top: 4px;
+    font-style: normal;
     pointer-events: none !important;
 }
 
-/* Translation replacement - inherit all styles from parent */
-.spicy-translation-replacement {
-    /* Inherit everything from parent line element */
+/* Wrapper for original content (used for line-synced lyrics) */
+.spicy-original-wrapper {
+    display: contents;
+}
+
+.spicy-original-wrapper.spicy-hidden-original {
+    display: none !important;
+}
+
+/* Line that has been translated */
+.line.spicy-translated {
+    /* Keep line's normal display and behavior */
+}
+
+/* Ensure translation container doesn't interfere with clicks */
+.spicy-translation-container {
+    pointer-events: none !important;
+}
+
+/* ========================================
+   CONTEXT-SPECIFIC STYLES
+   For main page, Cinema View, and PIP
+   ======================================== */
+
+/* Main page styles */
+#SpicyLyricsPage .LyricsContent .line .spicy-translation-text,
+#SpicyLyricsPage .LyricsContent .line .spicy-inline-translation {
+    color: inherit;
+    font-family: inherit;
+}
+
+/* Cinema View / Fullscreen styles */
+#SpicyLyricsPage.ForcedCompactMode .spicy-translation-text,
+#SpicyLyricsPage.ForcedCompactMode .spicy-inline-translation {
+    color: inherit;
+    font-family: inherit;
+}
+
+/* PIP popout styles */
+.spicy-pip-wrapper .spicy-translation-text,
+.spicy-pip-wrapper .spicy-inline-translation {
+    color: inherit;
+    font-family: inherit;
+}
+
+/* Sidebar mode styles */
+#SpicyLyricsPage.SidebarMode .spicy-translation-text,
+#SpicyLyricsPage.SidebarMode .spicy-inline-translation {
+    color: inherit;
+    font-family: inherit;
 }
 `;
 

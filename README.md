@@ -12,7 +12,11 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 - 🧠 **Smart Detection** - Automatically skips translation if lyrics are already in your target language
 - 💾 **Caching** - Caches translations for 7 days to reduce API calls and improve performance
 - ⚙️ **Customizable** - Right-click the translate button to access settings
-- 🔁 **Auto-Translate** - Optionally translate lyrics automatically when they load
+- 🔁 **Auto-Translate** - Optionally translate lyrics automatically when lyrics load
+
+## Preview
+
+![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
 
 ## Requirements
 
@@ -23,7 +27,7 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 ### Easy Install (Recommended)
 
-1. Download [`spicy-lyric-translater.js`](./dist/spicy-lyric-translater.js) from the `builds` folder
+1. Download `spicy-lyric-translater.js` from the `builds` folder
 2. Copy it to your Spicetify Extensions folder:
    - **Windows:** `%APPDATA%\spicetify\Extensions\`
    - **Linux/macOS:** `~/.config/spicetify/Extensions/`
@@ -85,7 +89,9 @@ Right-click the translate button to access:
 
 ## How It Works
 
-The extension uses Google Translate's API with LibreTranslate as a fallback. It detects the source language and skips translation if it matches your target language (e.g., won't translate English to English). Translations are cached locally for 7 days.
+The extension uses Google Translate's API with LibreTranslate as a fallback.  
+It detects the source language and skips translation if it matches your target language.  
+Translations are cached locally for 7 days.
 
 ## Development
 
@@ -108,7 +114,6 @@ npm run deploy
 - [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) by Spikerko
 - [Spicetify](https://spicetify.app/)
 - Translation powered by Google Translate
-
 
 ## Contributing
 

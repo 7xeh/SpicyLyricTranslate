@@ -12,7 +12,7 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 - 🧠 **Smart Detection** - Automatically skips translation if lyrics are already in your target language
 - 💾 **Caching** - Caches translations for 7 days to reduce API calls and improve performance
 - ⚙️ **Customizable** - Right-click the translate button to access settings
-- 🔁 **Auto-Translate** - Optionally translate lyrics automatically when lyrics load
+- 🔁 **Auto-Translate** - Optionally translate when lyrics load
 
 ## Preview
 
@@ -20,18 +20,26 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 ## Requirements
 
-- [Spicetify](https://spicetify.app/) installed and configured
+- [Spicetify](https://spicetify.app/) installed and configured  
 - [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) extension installed
 
 ## Installation
 
 ### Easy Install (Recommended)
 
-1. Download `spicy-lyric-translater.js` from the `builds` folder
+Download and run the official installer script:
+
+[Install Spicy Lyric Translater — Installer Script](https://github.com/7xeh/SpicyLyricTranslate/releases/download/v1.2/Install.Spicetify.+.SpicyTranslate.cmd)
+
+This script automates installation and setup.
+
+### Manual Install
+
+1. Download `spicy-lyric-translater.js` from the `builds` folder  
 2. Copy it to your Spicetify Extensions folder:
    - **Windows:** `%APPDATA%\spicetify\Extensions\`
    - **Linux/macOS:** `~/.config/spicetify/Extensions/`
-3. Run these commands:
+3. Run:
    ```bash
    spicetify config extensions spicy-lyric-translater.js
    spicetify apply
@@ -44,7 +52,7 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 ### Build from Source
 
-1. Clone this repository
+1. Clone this repository  
 2. Install dependencies:
    ```bash
    npm install
@@ -57,41 +65,39 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 ## Usage
 
-1. Open Spotify and play a song with lyrics
-2. Open Spicy Lyrics (click the lyrics button in the player bar)
-3. You'll see a new **translate button** (🌐) in the view controls bar
-4. Click the button to enable/disable translation
-5. **Right-click** the button to open settings
+1. Open Spotify and play a song with lyrics  
+2. Open Spicy Lyrics (via the lyrics button in the player bar)  
+3. You'll see a new **translate button** (🌐) in the view controls bar  
+4. Click to enable/disable translation  
+5. **Right-click** for settings  
 
 ### Settings
 
-Right-click the translate button to access:
-
-- **Target Language** - Choose your preferred language
-- **Show Original** - Display original lyrics alongside translations
-- **Auto-Translate** - Automatically translate when lyrics load
-- **Clear Cache** - Remove cached translations
+- **Target Language** – Choose your preferred output language  
+- **Show Original** – Display original lyrics alongside translated ones  
+- **Auto-Translate** – Automatically translate on lyric load  
+- **Clear Cache** – Remove stored translations  
 
 ## Supported Languages
 
 | Language | Code | Language | Code |
 |----------|------|----------|------|
-| English | en | Korean | ko |
-| Spanish | es | Chinese (Simplified) | zh |
-| French | fr | Chinese (Traditional) | zh-TW |
-| German | de | Arabic | ar |
-| Italian | it | Hindi | hi |
-| Portuguese | pt | Dutch | nl |
-| Russian | ru | Polish | pl |
-| Japanese | ja | Turkish | tr |
-| Vietnamese | vi | Thai | th |
-| Indonesian | id | Ukrainian | uk |
+| English | en | Korean | ko |  
+| Spanish | es | Chinese (Simplified) | zh |  
+| French | fr | Chinese (Traditional) | zh-TW |  
+| German | de | Arabic | ar |  
+| Italian | it | Hindi | hi |  
+| Portuguese | pt | Dutch | nl |  
+| Russian | ru | Polish | pl |  
+| Japanese | ja | Turkish | tr |  
+| Vietnamese | vi | Thai | th |  
+| Indonesian | id | Ukrainian | uk |  
 
 ## How It Works
 
-The extension uses Google Translate's API with LibreTranslate as a fallback.  
-It detects the source language and skips translation if it matches your target language.  
-Translations are cached locally for 7 days.
+Uses Google Translate with LibreTranslate as fallback.  
+Automatically detects the source language and avoids unnecessary translations.  
+Results are cached locally for 7 days.
 
 ## Development
 
@@ -111,13 +117,13 @@ npm run deploy
 
 ## Credits
 
-- [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) by Spikerko
-- [Spicetify](https://spicetify.app/)
-- Translation powered by Google Translate
+- [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) by Spikerko  
+- [Spicetify](https://spicetify.app/)  
+- Translation powered by Google Translate  
 
 ## Contributing
 
-Contributions welcome! Feel free to open issues or submit pull requests.
+Contributions welcome! Submit issues or PRs anytime.
 
 ---
 

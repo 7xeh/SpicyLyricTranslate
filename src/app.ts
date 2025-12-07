@@ -300,9 +300,15 @@ async function handleTranslateToggle(): Promise<void> {
 
 /**
  * Wait for lyrics to load and then translate
+ * Uses content hash to detect when lyrics actually change
  */
 async function waitForLyricsAndTranslate(retries: number = 10, delay: number = 500): Promise<void> {
     console.log('[SpicyLyricTranslater] Waiting for lyrics to load...');
+    
+    // Store initial content hash to detect changes
+    let previousContentHash = '';
+    let stableCount = 0;
+    const requiredStableIterations = 2; // Lyrics must be stable for 2 iterations
     
     for (let i = 0; i < retries; i++) {
         // Wait for the delay
@@ -314,18 +320,43 @@ async function waitForLyricsAndTranslate(retries: number = 10, delay: number = 5
             return;
         }
         
-        // Try to get lyrics lines
-        const lines = getLyricsLines();
-        if (lines.length > 0) {
-            console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines after ${i + 1} attempts`);
-            await translateCurrentLyrics();
+        // Check if we're already translating
+        if (state.isTranslating) {
+            console.log('[SpicyLyricTranslater] Already translating, stopping retry');
             return;
         }
         
-        console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+        // Try to get lyrics lines
+        const lines = getLyricsLines();
+        if (lines.length === 0) {
+            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+            previousContentHash = '';
+            stableCount = 0;
+            continue;
+        }
+        
+        // Calculate content hash to detect when lyrics have actually changed/stabilized
+        const currentContent = Array.from(lines).slice(0, 5).map(l => l.textContent?.trim() || '').join('|');
+        const currentHash = currentContent.substring(0, 100);
+        
+        if (currentHash === previousContentHash && currentHash.length > 0) {
+            stableCount++;
+            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics stable (${stableCount}/${requiredStableIterations})`);
+            
+            if (stableCount >= requiredStableIterations) {
+                console.log(`[SpicyLyricTranslater] Found ${lines.length} stable lyrics lines after ${i + 1} attempts`);
+                await translateCurrentLyrics();
+                return;
+            }
+        } else {
+            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics content changed, resetting stability counter`);
+            stableCount = 0;
+        }
+        
+        previousContentHash = currentHash;
     }
     
-    console.log('[SpicyLyricTranslater] Gave up waiting for lyrics after', retries, 'attempts');
+    console.log('[SpicyLyricTranslater] Gave up waiting for stable lyrics after', retries, 'attempts');
 }
 
 /**
@@ -946,18 +977,14 @@ async function onSpicyLyricsOpen(): Promise<void> {
     
     // Auto-translate if auto-translate setting is on
     if (state.autoTranslate) {
-        // Wait a bit for lyrics to load
-        setTimeout(() => {
-            if (!state.isTranslating) {
-                // Auto-enable translation
-                if (!state.isEnabled) {
-                    state.isEnabled = true;
-                    storage.set('translation-enabled', 'true');
-                    updateButtonState();
-                }
-                translateCurrentLyrics();
-            }
-        }, 1500);
+        // Auto-enable translation
+        if (!state.isEnabled) {
+            state.isEnabled = true;
+            storage.set('translation-enabled', 'true');
+            updateButtonState();
+        }
+        // Wait for lyrics to stabilize before translating
+        waitForLyricsAndTranslate(10, 800);
     }
 }
 
@@ -1303,8 +1330,9 @@ async function initialize(): Promise<void> {
                     storage.set('translation-enabled', 'true');
                     updateButtonState();
                 }
-                // Wait for lyrics to load with retry
-                waitForLyricsAndTranslate();
+                // Wait longer for new lyrics to load (old lyrics need to be replaced first)
+                // Use increased initial delay and more retries
+                waitForLyricsAndTranslate(15, 1000);
             }
         });
     }

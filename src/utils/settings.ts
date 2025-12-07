@@ -87,23 +87,14 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Show Original
-            settings.addToggle(
-                'show-original',
-                'Show Original Lyrics',
-                storage.get('show-original') === 'true',
-                () => {
-                    storage.set('show-original', settings.getFieldValue('show-original'));
-                }
-            );
-            
             // Auto-Translate
             settings.addToggle(
                 'auto-translate',
                 'Auto-Translate on Song Change',
                 storage.get('auto-translate') === 'true',
                 () => {
-                    storage.set('auto-translate', settings.getFieldValue('auto-translate'));
+                    const value = settings.getFieldValue('auto-translate');
+                    storage.set('auto-translate', String(value));
                 }
             );
             
@@ -113,7 +104,8 @@ export async function registerSettings(): Promise<void> {
                 'Show Notifications',
                 storage.get('show-notifications') !== 'false',
                 () => {
-                    storage.set('show-notifications', settings.getFieldValue('show-notifications'));
+                    const value = settings.getFieldValue('show-notifications');
+                    storage.set('show-notifications', String(value));
                 }
             );
             

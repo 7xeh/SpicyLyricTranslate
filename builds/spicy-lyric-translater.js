@@ -390,7 +390,8 @@ var SpicyLyricTranslater = (() => {
           originalText: text,
           translatedText: text,
           detectedLanguage: result.detectedLang,
-          targetLanguage: targetLang
+          targetLanguage: targetLang,
+          wasTranslated: false
         };
       }
       cacheTranslation(text, targetLang, result.translation);
@@ -398,7 +399,8 @@ var SpicyLyricTranslater = (() => {
         originalText: text,
         translatedText: result.translation,
         detectedLanguage: result.detectedLang,
-        targetLanguage: targetLang
+        targetLanguage: targetLang,
+        wasTranslated: true
       };
     } catch (primaryError) {
       console.warn(`[SpicyLyricTranslater] Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
@@ -411,7 +413,8 @@ var SpicyLyricTranslater = (() => {
               originalText: text,
               translatedText: text,
               detectedLanguage: result.detectedLang,
-              targetLanguage: targetLang
+              targetLanguage: targetLang,
+              wasTranslated: false
             };
           }
           cacheTranslation(text, targetLang, result.translation);
@@ -419,7 +422,8 @@ var SpicyLyricTranslater = (() => {
             originalText: text,
             translatedText: result.translation,
             detectedLanguage: result.detectedLang,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: true
           };
         } catch (fallbackError) {
           console.warn("[SpicyLyricTranslater] Fallback API failed:", fallbackError);
@@ -438,7 +442,8 @@ var SpicyLyricTranslater = (() => {
       return lines.map((line) => ({
         originalText: line,
         translatedText: line,
-        targetLanguage: targetLang
+        targetLanguage: targetLang,
+        wasTranslated: false
       }));
     }
     try {
@@ -450,14 +455,16 @@ var SpicyLyricTranslater = (() => {
           results.push({
             originalText: line,
             translatedText: translatedLines[translatedIndex] || line,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: result.wasTranslated
           });
           translatedIndex++;
         } else {
           results.push({
             originalText: line,
             translatedText: line,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: false
           });
         }
       }
@@ -472,14 +479,16 @@ var SpicyLyricTranslater = (() => {
             results.push({
               originalText: line,
               translatedText: line,
-              targetLanguage: targetLang
+              targetLanguage: targetLang,
+              wasTranslated: false
             });
           }
         } else {
           results.push({
             originalText: line,
             translatedText: line,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: false
           });
         }
       }
@@ -613,14 +622,27 @@ var SpicyLyricTranslater = (() => {
     /* Inherit all text styling from parent */
 }
 
-/* Inline translation (shown below original when showOriginal is true) */
-.spicy-inline-translation {
-    display: block;
-    font-size: 0.8em;
-    opacity: 0.65;
-    margin-top: 4px;
-    font-style: normal;
+/* ========================================
+   TRANSLATION DISPLAY STYLES
+   ======================================== */
+
+/* Hide original content completely when showing translation only */
+.spicy-hidden-original {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
     pointer-events: none !important;
+}
+
+/* Translated text - inherits styling from parent line */
+/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
+.spicy-translation-text {
+    display: inline !important;
+    pointer-events: none !important;
+    /* Inherit all text styling from parent */
 }
 
 /* Wrapper for original content (used for line-synced lyrics) */
@@ -634,7 +656,7 @@ var SpicyLyricTranslater = (() => {
 
 /* Line that has been translated */
 .line.spicy-translated {
-    /* Keep line's normal display and behavior */
+    /* Don't change display - let Spicy Lyrics control it */
 }
 
 /* Ensure translation container doesn't interfere with clicks */
@@ -648,29 +670,25 @@ var SpicyLyricTranslater = (() => {
    ======================================== */
 
 /* Main page styles */
-#SpicyLyricsPage .LyricsContent .line .spicy-translation-text,
-#SpicyLyricsPage .LyricsContent .line .spicy-inline-translation {
+#SpicyLyricsPage .LyricsContent .line .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* Cinema View / Fullscreen styles */
-#SpicyLyricsPage.ForcedCompactMode .spicy-translation-text,
-#SpicyLyricsPage.ForcedCompactMode .spicy-inline-translation {
+#SpicyLyricsPage.ForcedCompactMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* PIP popout styles */
-.spicy-pip-wrapper .spicy-translation-text,
-.spicy-pip-wrapper .spicy-inline-translation {
+.spicy-pip-wrapper .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* Sidebar mode styles */
-#SpicyLyricsPage.SidebarMode .spicy-translation-text,
-#SpicyLyricsPage.SidebarMode .spicy-inline-translation {
+#SpicyLyricsPage.SidebarMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
@@ -691,7 +709,6 @@ var SpicyLyricTranslater = (() => {
     isEnabled: false,
     isTranslating: false,
     targetLanguage: storage.get("target-language") || "en",
-    showOriginal: storage.get("show-original") === "true",
     autoTranslate: storage.get("auto-translate") === "true",
     showNotifications: storage.get("show-notifications") !== "false",
     // Default to true
@@ -867,51 +884,52 @@ var SpicyLyricTranslater = (() => {
       removeTranslations();
     }
   }
+  async function waitForLyricsAndTranslate(retries = 10, delay = 500) {
+    console.log("[SpicyLyricTranslater] Waiting for lyrics to load...");
+    for (let i = 0; i < retries; i++) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (!isSpicyLyricsOpen()) {
+        console.log("[SpicyLyricTranslater] SpicyLyrics not open, stopping retry");
+        return;
+      }
+      const lines = getLyricsLines();
+      if (lines.length > 0) {
+        console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines after ${i + 1} attempts`);
+        await translateCurrentLyrics();
+        return;
+      }
+      console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+    }
+    console.log("[SpicyLyricTranslater] Gave up waiting for lyrics after", retries, "attempts");
+  }
   function getLyricsLines() {
     let lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-    if (lines.length === 0) {
-      lines = document.querySelectorAll(".Cinema--Container .LyricsContent .line:not(.musical-line)");
-    }
-    if (lines.length === 0) {
-      lines = document.querySelectorAll(".Cinema--Container .line:not(.musical-line)");
-    }
     if (lines.length === 0) {
       lines = document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
     }
     if (lines.length === 0) {
       lines = document.querySelectorAll(".LyricsContainer .line:not(.musical-line)");
     }
-    if (lines.length === 0) {
-      const pipWindow = getPIPWindow();
-      if (pipWindow) {
-        lines = pipWindow.document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-        if (lines.length === 0) {
-          lines = pipWindow.document.querySelectorAll(".LyricsContainer .LyricsContent .line:not(.musical-line)");
-        }
-        if (lines.length === 0) {
-          lines = pipWindow.document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
-        }
-        if (lines.length > 0) {
-          console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines in PIP`);
-          return lines;
-        }
+    if (lines.length > 0) {
+      console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines in main document`);
+      return lines;
+    }
+    const pipWindow = getPIPWindow();
+    if (pipWindow) {
+      lines = pipWindow.document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
+      if (lines.length === 0) {
+        lines = pipWindow.document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
+      }
+      if (lines.length === 0) {
+        lines = pipWindow.document.querySelectorAll(".LyricsContainer .line:not(.musical-line)");
+      }
+      if (lines.length > 0) {
+        console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines in PIP`);
+        return lines;
       }
     }
-    console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines`);
+    console.log("[SpicyLyricTranslater] No lyrics lines found");
     return lines;
-  }
-  function getPIPLyricsLines() {
-    const pipWindow = getPIPWindow();
-    if (!pipWindow)
-      return null;
-    let lines = pipWindow.document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-    if (lines.length === 0) {
-      lines = pipWindow.document.querySelectorAll(".LyricsContainer .LyricsContent .line:not(.musical-line)");
-    }
-    if (lines.length === 0) {
-      lines = pipWindow.document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
-    }
-    return lines.length > 0 ? lines : null;
   }
   function extractLineText(lineElement) {
     if (lineElement.classList.contains("musical-line")) {
@@ -940,23 +958,16 @@ var SpicyLyricTranslater = (() => {
       console.log("[SpicyLyricTranslater] Already translating, skipping");
       return;
     }
-    let lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
+    const lines = getLyricsLines();
     if (lines.length === 0) {
-      lines = document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
-    }
-    const pipLines = getPIPLyricsLines();
-    if (lines.length === 0 && (!pipLines || pipLines.length === 0)) {
-      console.log("[SpicyLyricTranslater] No lyrics content found, waiting...");
+      console.log("[SpicyLyricTranslater] No lyrics lines found, waiting...");
       await new Promise((resolve) => setTimeout(resolve, 500));
-      lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-      if (lines.length === 0) {
-        lines = document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
+      const retryLines = getLyricsLines();
+      if (retryLines.length === 0) {
+        console.log("[SpicyLyricTranslater] Still no lyrics lines found");
+        return;
       }
-    }
-    const activeLines = lines.length > 0 ? lines : pipLines || document.querySelectorAll(".line:not(.musical-line)");
-    if (activeLines.length === 0) {
-      console.log("[SpicyLyricTranslater] No lyrics lines found");
-      return;
+      return translateCurrentLyrics();
     }
     state.isTranslating = true;
     const button = document.querySelector("#TranslateToggle");
@@ -974,7 +985,7 @@ var SpicyLyricTranslater = (() => {
     }
     try {
       const lineTexts = [];
-      activeLines.forEach((line) => {
+      lines.forEach((line) => {
         const text = extractLineText(line);
         lineTexts.push(text);
       });
@@ -989,18 +1000,18 @@ var SpicyLyricTranslater = (() => {
       console.log("[SpicyLyricTranslater] Translating", nonEmptyTexts.length, "lines...");
       const translations = await translateLyrics(lineTexts, state.targetLanguage);
       console.log("[SpicyLyricTranslater] Translation complete, got", translations.length, "results");
+      const wasActuallyTranslated = translations.some((t) => t.wasTranslated === true);
       state.translatedLyrics.clear();
       translations.forEach((result, index) => {
         state.translatedLyrics.set(lineTexts[index], result.translatedText);
       });
-      if (lines.length > 0) {
-        applyTranslations(lines);
-      }
-      if (pipLines && pipLines.length > 0) {
-        applyTranslations(pipLines);
-      }
+      applyTranslations(lines);
       if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
-        Spicetify.showNotification("Lyrics translated successfully!");
+        if (wasActuallyTranslated) {
+          Spicetify.showNotification("Lyrics translated successfully!");
+        } else {
+          Spicetify.showNotification("Lyrics are already in the target language");
+        }
       }
     } catch (error) {
       console.error("[SpicyLyricTranslater] Translation failed:", error);
@@ -1025,33 +1036,26 @@ var SpicyLyricTranslater = (() => {
         line.dataset.originalText = originalText;
         line.dataset.lineIndex = index.toString();
         line.classList.add("spicy-translated");
-        if (state.showOriginal) {
-          const translationSpan = document.createElement("span");
-          translationSpan.className = "spicy-translation-container spicy-inline-translation";
-          translationSpan.textContent = translatedText;
-          line.appendChild(translationSpan);
+        const contentElements = line.querySelectorAll(".word, .syllable");
+        if (contentElements.length > 0) {
+          contentElements.forEach((el) => {
+            el.classList.add("spicy-hidden-original");
+          });
         } else {
-          const contentElements = line.querySelectorAll(".word, .syllable");
-          if (contentElements.length > 0) {
-            contentElements.forEach((el) => {
-              el.classList.add("spicy-hidden-original");
-            });
-          } else {
-            const existingWrapper = line.querySelector(".spicy-original-wrapper");
-            if (!existingWrapper) {
-              const originalContent = line.innerHTML;
-              const wrapper = document.createElement("span");
-              wrapper.className = "spicy-original-wrapper spicy-hidden-original";
-              wrapper.innerHTML = originalContent;
-              line.innerHTML = "";
-              line.appendChild(wrapper);
-            }
+          const existingWrapper = line.querySelector(".spicy-original-wrapper");
+          if (!existingWrapper) {
+            const originalContent = line.innerHTML;
+            const wrapper = document.createElement("span");
+            wrapper.className = "spicy-original-wrapper spicy-hidden-original";
+            wrapper.innerHTML = originalContent;
+            line.innerHTML = "";
+            line.appendChild(wrapper);
           }
-          const translationSpan = document.createElement("span");
-          translationSpan.className = "spicy-translation-container spicy-translation-text";
-          translationSpan.textContent = translatedText;
-          line.appendChild(translationSpan);
         }
+        const translationSpan = document.createElement("span");
+        translationSpan.className = "spicy-translation-container spicy-translation-text";
+        translationSpan.textContent = translatedText;
+        line.appendChild(translationSpan);
       }
     });
   }
@@ -1159,13 +1163,6 @@ var SpicyLyricTranslater = (() => {
         </div>
         <div class="setting-item">
             <div>
-                <div class="setting-label">Show Original</div>
-                <div class="setting-description">Show original lyrics alongside translations</div>
-            </div>
-            <div class="toggle-switch ${state.showOriginal ? "active" : ""}" id="spicy-translate-show-original"></div>
-        </div>
-        <div class="setting-item">
-            <div>
                 <div class="setting-label">Auto-Translate</div>
                 <div class="setting-description">Automatically translate lyrics when they load</div>
             </div>
@@ -1191,7 +1188,6 @@ var SpicyLyricTranslater = (() => {
       const apiSelect = document.getElementById("spicy-translate-api-select");
       const customApiContainer = document.getElementById("spicy-translate-custom-api-container");
       const customApiUrlInput = document.getElementById("spicy-translate-custom-api-url");
-      const showOriginalToggle = document.getElementById("spicy-translate-show-original");
       const autoToggle = document.getElementById("spicy-translate-auto");
       const notificationsToggle = document.getElementById("spicy-translate-notifications");
       const clearCacheBtn = document.getElementById("spicy-translate-clear-cache");
@@ -1219,18 +1215,6 @@ var SpicyLyricTranslater = (() => {
           state.customApiUrl = customApiUrlInput.value;
           storage.set("custom-api-url", state.customApiUrl);
           setPreferredApi(state.preferredApi, state.customApiUrl);
-        });
-      }
-      if (showOriginalToggle) {
-        showOriginalToggle.addEventListener("click", () => {
-          state.showOriginal = !state.showOriginal;
-          storage.set("show-original", state.showOriginal.toString());
-          showOriginalToggle.classList.toggle("active", state.showOriginal);
-          if (state.isEnabled && state.translatedLyrics.size > 0) {
-            removeTranslations();
-            const lines = getLyricsLines();
-            applyTranslations(lines);
-          }
         });
       }
       if (autoToggle) {
@@ -1409,15 +1393,6 @@ var SpicyLyricTranslater = (() => {
           }
         );
         settings.addToggle(
-          "show-original",
-          "Show Original Lyrics (alongside translation)",
-          state.showOriginal,
-          () => {
-            state.showOriginal = settings.getFieldValue("show-original") === "true";
-            storage.set("show-original", state.showOriginal.toString());
-          }
-        );
-        settings.addToggle(
           "auto-translate",
           "Auto-Translate on Song Change",
           state.autoTranslate,
@@ -1571,7 +1546,6 @@ var SpicyLyricTranslater = (() => {
     console.log("[SpicyLyricTranslater] Initializing...");
     state.isEnabled = storage.get("translation-enabled") === "true";
     state.targetLanguage = storage.get("target-language") || "en";
-    state.showOriginal = storage.get("show-original") === "true";
     state.autoTranslate = storage.get("auto-translate") === "true";
     state.showNotifications = storage.get("show-notifications") !== "false";
     state.preferredApi = storage.get("preferred-api") || "google";
@@ -1592,17 +1566,16 @@ var SpicyLyricTranslater = (() => {
     }
     if (Spicetify.Player?.addEventListener) {
       Spicetify.Player.addEventListener("songchange", () => {
+        console.log("[SpicyLyricTranslater] Song changed");
         state.translatedLyrics.clear();
         removeTranslations();
-        if (state.autoTranslate && isSpicyLyricsOpen()) {
-          setTimeout(() => {
-            if (!state.isEnabled) {
-              state.isEnabled = true;
-              storage.set("translation-enabled", "true");
-              updateButtonState();
-            }
-            translateCurrentLyrics();
-          }, 1500);
+        if (state.autoTranslate) {
+          if (!state.isEnabled) {
+            state.isEnabled = true;
+            storage.set("translation-enabled", "true");
+            updateButtonState();
+          }
+          waitForLyricsAndTranslate();
         }
       });
     }

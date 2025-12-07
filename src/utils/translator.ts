@@ -10,6 +10,7 @@ export interface TranslationResult {
     translatedText: string;
     detectedLanguage?: string;
     targetLanguage: string;
+    wasTranslated?: boolean; // false if source language matches target
 }
 
 export interface TranslationCache {
@@ -399,7 +400,8 @@ export async function translateText(text: string, targetLang: string): Promise<T
                 originalText: text,
                 translatedText: text,
                 detectedLanguage: result.detectedLang,
-                targetLanguage: targetLang
+                targetLanguage: targetLang,
+                wasTranslated: false
             };
         }
         
@@ -408,7 +410,8 @@ export async function translateText(text: string, targetLang: string): Promise<T
             originalText: text,
             translatedText: result.translation,
             detectedLanguage: result.detectedLang,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: true
         };
     } catch (primaryError) {
         console.warn(`[SpicyLyricTranslater] Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
@@ -424,7 +427,8 @@ export async function translateText(text: string, targetLang: string): Promise<T
                         originalText: text,
                         translatedText: text,
                         detectedLanguage: result.detectedLang,
-                        targetLanguage: targetLang
+                        targetLanguage: targetLang,
+                        wasTranslated: false
                     };
                 }
                 
@@ -433,7 +437,8 @@ export async function translateText(text: string, targetLang: string): Promise<T
                     originalText: text,
                     translatedText: result.translation,
                     detectedLanguage: result.detectedLang,
-                    targetLanguage: targetLang
+                    targetLanguage: targetLang,
+                    wasTranslated: true
                 };
             } catch (fallbackError) {
                 console.warn('[SpicyLyricTranslater] Fallback API failed:', fallbackError);
@@ -461,7 +466,8 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
         return lines.map(line => ({
             originalText: line,
             translatedText: line,
-            targetLanguage: targetLang
+            targetLanguage: targetLang,
+            wasTranslated: false
         }));
     }
     
@@ -475,14 +481,16 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
                 results.push({
                     originalText: line,
                     translatedText: translatedLines[translatedIndex] || line,
-                    targetLanguage: targetLang
+                    targetLanguage: targetLang,
+                    wasTranslated: result.wasTranslated
                 });
                 translatedIndex++;
             } else {
                 results.push({
                     originalText: line,
                     translatedText: line,
-                    targetLanguage: targetLang
+                    targetLanguage: targetLang,
+                    wasTranslated: false
                 });
             }
         }
@@ -499,14 +507,16 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
                     results.push({
                         originalText: line,
                         translatedText: line,
-                        targetLanguage: targetLang
+                        targetLanguage: targetLang,
+                        wasTranslated: false
                     });
                 }
             } else {
                 results.push({
                     originalText: line,
                     translatedText: line,
-                    targetLanguage: targetLang
+                    targetLanguage: targetLang,
+                    wasTranslated: false
                 });
             }
         }

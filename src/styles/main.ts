@@ -125,14 +125,27 @@ export const styles = `
     /* Inherit all text styling from parent */
 }
 
-/* Inline translation (shown below original when showOriginal is true) */
-.spicy-inline-translation {
-    display: block;
-    font-size: 0.8em;
-    opacity: 0.65;
-    margin-top: 4px;
-    font-style: normal;
+/* ========================================
+   TRANSLATION DISPLAY STYLES
+   ======================================== */
+
+/* Hide original content completely when showing translation only */
+.spicy-hidden-original {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
     pointer-events: none !important;
+}
+
+/* Translated text - inherits styling from parent line */
+/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
+.spicy-translation-text {
+    display: inline !important;
+    pointer-events: none !important;
+    /* Inherit all text styling from parent */
 }
 
 /* Wrapper for original content (used for line-synced lyrics) */
@@ -146,7 +159,7 @@ export const styles = `
 
 /* Line that has been translated */
 .line.spicy-translated {
-    /* Keep line's normal display and behavior */
+    /* Don't change display - let Spicy Lyrics control it */
 }
 
 /* Ensure translation container doesn't interfere with clicks */
@@ -160,29 +173,25 @@ export const styles = `
    ======================================== */
 
 /* Main page styles */
-#SpicyLyricsPage .LyricsContent .line .spicy-translation-text,
-#SpicyLyricsPage .LyricsContent .line .spicy-inline-translation {
+#SpicyLyricsPage .LyricsContent .line .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* Cinema View / Fullscreen styles */
-#SpicyLyricsPage.ForcedCompactMode .spicy-translation-text,
-#SpicyLyricsPage.ForcedCompactMode .spicy-inline-translation {
+#SpicyLyricsPage.ForcedCompactMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* PIP popout styles */
-.spicy-pip-wrapper .spicy-translation-text,
-.spicy-pip-wrapper .spicy-inline-translation {
+.spicy-pip-wrapper .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
 /* Sidebar mode styles */
-#SpicyLyricsPage.SidebarMode .spicy-translation-text,
-#SpicyLyricsPage.SidebarMode .spicy-inline-translation {
+#SpicyLyricsPage.SidebarMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }

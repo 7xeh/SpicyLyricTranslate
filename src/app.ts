@@ -16,7 +16,6 @@ interface ExtensionState {
     isEnabled: boolean;
     isTranslating: boolean;
     targetLanguage: string;
-    showOriginal: boolean;
     autoTranslate: boolean;
     showNotifications: boolean;
     preferredApi: 'google' | 'libretranslate' | 'custom';
@@ -30,7 +29,6 @@ const state: ExtensionState = {
     isEnabled: false,
     isTranslating: false,
     targetLanguage: storage.get('target-language') || 'en',
-    showOriginal: storage.get('show-original') === 'true',
     autoTranslate: storage.get('auto-translate') === 'true',
     showNotifications: storage.get('show-notifications') !== 'false', // Default to true
     preferredApi: (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google',
@@ -494,6 +492,9 @@ async function translateCurrentLyrics(): Promise<void> {
         const translations = await translateLyrics(lineTexts, state.targetLanguage);
         console.log('[SpicyLyricTranslater] Translation complete, got', translations.length, 'results');
         
+        // Check if any actual translation was performed
+        const wasActuallyTranslated = translations.some(t => t.wasTranslated === true);
+        
         // Store translations
         state.translatedLyrics.clear();
         translations.forEach((result, index) => {
@@ -503,9 +504,14 @@ async function translateCurrentLyrics(): Promise<void> {
         // Apply translations to the lines we found
         applyTranslations(lines);
         
-        // Show notification if enabled
+        // Show notification if enabled and actual translation occurred
         if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
-            Spicetify.showNotification('Lyrics translated successfully!');
+            if (wasActuallyTranslated) {
+                Spicetify.showNotification('Lyrics translated successfully!');
+            } else {
+                // Lyrics are already in the target language
+                Spicetify.showNotification('Lyrics are already in the target language');
+            }
         }
     } catch (error) {
         console.error('[SpicyLyricTranslater] Translation failed:', error);
@@ -522,8 +528,7 @@ async function translateCurrentLyrics(): Promise<void> {
 
 /**
  * Apply translations to the lyrics DOM
- * When showOriginal is false: hides original content and shows only translated text
- * When showOriginal is true: shows both original and translated text
+ * Hides original content and shows only translated text
  */
 function applyTranslations(lines: NodeListOf<Element>): void {
     lines.forEach((line, index) => {
@@ -547,43 +552,43 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             // Mark line as translated
             line.classList.add('spicy-translated');
             
-            if (state.showOriginal) {
-                // Show both: original stays visible, translation appears below
-                const translationSpan = document.createElement('span');
-                translationSpan.className = 'spicy-translation-container spicy-inline-translation';
-                translationSpan.textContent = translatedText;
-                line.appendChild(translationSpan);
+            // Hide original content completely, show only translation
+            // Get all direct content elements (words, syllables, or text nodes)
+            const contentElements = line.querySelectorAll('.word, .syllable');
+            
+            if (contentElements.length > 0) {
+                // Hide all word/syllable elements
+                contentElements.forEach((el) => {
+                    (el as HTMLElement).classList.add('spicy-hidden-original');
+                });
             } else {
-                // Hide original content completely, show only translation
-                // Get all direct content elements (words, syllables, or text nodes)
-                const contentElements = line.querySelectorAll('.word, .syllable');
-                
-                if (contentElements.length > 0) {
-                    // Hide all word/syllable elements
-                    contentElements.forEach((el) => {
-                        (el as HTMLElement).classList.add('spicy-hidden-original');
-                    });
-                } else {
-                    // For line-synced lyrics without word elements, wrap content
-                    const existingWrapper = line.querySelector('.spicy-original-wrapper');
-                    if (!existingWrapper) {
-                        // Save original innerHTML and create wrapper
-                        const originalContent = line.innerHTML;
-                        const wrapper = document.createElement('span');
-                        wrapper.className = 'spicy-original-wrapper spicy-hidden-original';
-                        wrapper.innerHTML = originalContent;
-                        line.innerHTML = '';
-                        line.appendChild(wrapper);
-                    }
+                // For line-synced lyrics without word elements, wrap content
+                const existingWrapper = line.querySelector('.spicy-original-wrapper');
+                if (!existingWrapper) {
+                    // Save original innerHTML and create wrapper
+                    const originalContent = line.innerHTML;
+                    const wrapper = document.createElement('span');
+                    wrapper.className = 'spicy-original-wrapper spicy-hidden-original';
+                    wrapper.innerHTML = originalContent;
+                    line.innerHTML = '';
+                    line.appendChild(wrapper);
                 }
-                
-                // Add translation as the visible content
-                const translationSpan = document.createElement('span');
-                translationSpan.className = 'spicy-translation-container spicy-translation-text';
-                translationSpan.textContent = translatedText;
-                line.appendChild(translationSpan);
             }
+            
+            // Add translation as the visible content
+            const translationSpan = document.createElement('span');
+            translationSpan.className = 'spicy-translation-container spicy-translation-text';
+            translationSpan.textContent = translatedText;
+            line.appendChild(translationSpan);
         }
+    });
+}
+
+// Remove rendered translations from given lines without clearing the cache
+function clearRenderedTranslations(lines: NodeListOf<Element>): void {
+    lines.forEach(line => {
+        restoreLineText(line);
+        line.classList.remove('spicy-translated');
     });
 }
 
@@ -601,7 +606,7 @@ function restoreLineText(line: Element): void {
     const translationTexts = line.querySelectorAll('.spicy-translation-container');
     translationTexts.forEach(el => el.remove());
     
-    // Restore wrapped content for line-synced lyrics
+    // Restore wrapped content for line-synced lyrics (spicy-original-wrapper)
     const wrapper = line.querySelector('.spicy-original-wrapper');
     if (wrapper) {
         const originalContent = wrapper.innerHTML;
@@ -635,7 +640,7 @@ function removeTranslations(): void {
     }
     
     documents.forEach(doc => {
-        // Remove translation containers
+        // Remove translation containers first
         const translations = doc.querySelectorAll('.spicy-translation-container');
         translations.forEach(el => el.remove());
         
@@ -645,7 +650,7 @@ function removeTranslations(): void {
             el.classList.remove('spicy-hidden-original');
         });
         
-        // Restore wrapped content for line-synced lyrics
+        // Restore wrapped content for line-synced lyrics (spicy-original-wrapper)
         const wrappers = doc.querySelectorAll('.spicy-original-wrapper');
         wrappers.forEach(wrapper => {
             const parent = wrapper.parentElement;
@@ -727,13 +732,6 @@ function showSettingsModal(): void {
         </div>
         <div class="setting-item">
             <div>
-                <div class="setting-label">Show Original</div>
-                <div class="setting-description">Show original lyrics alongside translations</div>
-            </div>
-            <div class="toggle-switch ${state.showOriginal ? 'active' : ''}" id="spicy-translate-show-original"></div>
-        </div>
-        <div class="setting-item">
-            <div>
                 <div class="setting-label">Auto-Translate</div>
                 <div class="setting-description">Automatically translate lyrics when they load</div>
             </div>
@@ -761,7 +759,6 @@ function showSettingsModal(): void {
         const apiSelect = document.getElementById('spicy-translate-api-select') as HTMLSelectElement;
         const customApiContainer = document.getElementById('spicy-translate-custom-api-container');
         const customApiUrlInput = document.getElementById('spicy-translate-custom-api-url') as HTMLInputElement;
-        const showOriginalToggle = document.getElementById('spicy-translate-show-original');
         const autoToggle = document.getElementById('spicy-translate-auto');
         const notificationsToggle = document.getElementById('spicy-translate-notifications');
         const clearCacheBtn = document.getElementById('spicy-translate-clear-cache');
@@ -796,22 +793,6 @@ function showSettingsModal(): void {
                 state.customApiUrl = customApiUrlInput.value;
                 storage.set('custom-api-url', state.customApiUrl);
                 setPreferredApi(state.preferredApi, state.customApiUrl);
-            });
-        }
-        
-        if (showOriginalToggle) {
-            showOriginalToggle.addEventListener('click', () => {
-                state.showOriginal = !state.showOriginal;
-                storage.set('show-original', state.showOriginal.toString());
-                showOriginalToggle.classList.toggle('active', state.showOriginal);
-                
-                // Re-apply translations with new setting if enabled
-                if (state.isEnabled && state.translatedLyrics.size > 0) {
-                    removeTranslations();
-                    // Restore the stored translations
-                    const lines = getLyricsLines();
-                    applyTranslations(lines);
-                }
             });
         }
         
@@ -1053,17 +1034,6 @@ async function registerSettingsMenu(): Promise<void> {
                 }
             );
             
-            // Show Original toggle
-            settings.addToggle(
-                'show-original',
-                'Show Original Lyrics (alongside translation)',
-                state.showOriginal,
-                () => {
-                    state.showOriginal = settings.getFieldValue('show-original') === 'true';
-                    storage.set('show-original', state.showOriginal.toString());
-                }
-            );
-            
             // Auto-Translate toggle
             settings.addToggle(
                 'auto-translate',
@@ -1285,7 +1255,6 @@ async function initialize(): Promise<void> {
     // Load saved state
     state.isEnabled = storage.get('translation-enabled') === 'true';
     state.targetLanguage = storage.get('target-language') || 'en';
-    state.showOriginal = storage.get('show-original') === 'true';
     state.autoTranslate = storage.get('auto-translate') === 'true';
     state.showNotifications = storage.get('show-notifications') !== 'false';
     state.preferredApi = (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google';

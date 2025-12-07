@@ -886,21 +886,43 @@ var SpicyLyricTranslater = (() => {
   }
   async function waitForLyricsAndTranslate(retries = 10, delay = 500) {
     console.log("[SpicyLyricTranslater] Waiting for lyrics to load...");
+    let previousContentHash = "";
+    let stableCount = 0;
+    const requiredStableIterations = 2;
     for (let i = 0; i < retries; i++) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       if (!isSpicyLyricsOpen()) {
         console.log("[SpicyLyricTranslater] SpicyLyrics not open, stopping retry");
         return;
       }
-      const lines = getLyricsLines();
-      if (lines.length > 0) {
-        console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines after ${i + 1} attempts`);
-        await translateCurrentLyrics();
+      if (state.isTranslating) {
+        console.log("[SpicyLyricTranslater] Already translating, stopping retry");
         return;
       }
-      console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+      const lines = getLyricsLines();
+      if (lines.length === 0) {
+        console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+        previousContentHash = "";
+        stableCount = 0;
+        continue;
+      }
+      const currentContent = Array.from(lines).slice(0, 5).map((l) => l.textContent?.trim() || "").join("|");
+      const currentHash = currentContent.substring(0, 100);
+      if (currentHash === previousContentHash && currentHash.length > 0) {
+        stableCount++;
+        console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics stable (${stableCount}/${requiredStableIterations})`);
+        if (stableCount >= requiredStableIterations) {
+          console.log(`[SpicyLyricTranslater] Found ${lines.length} stable lyrics lines after ${i + 1} attempts`);
+          await translateCurrentLyrics();
+          return;
+        }
+      } else {
+        console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics content changed, resetting stability counter`);
+        stableCount = 0;
+      }
+      previousContentHash = currentHash;
     }
-    console.log("[SpicyLyricTranslater] Gave up waiting for lyrics after", retries, "attempts");
+    console.log("[SpicyLyricTranslater] Gave up waiting for stable lyrics after", retries, "attempts");
   }
   function getLyricsLines() {
     let lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
@@ -1329,16 +1351,12 @@ var SpicyLyricTranslater = (() => {
     }
     setupLyricsObserver();
     if (state.autoTranslate) {
-      setTimeout(() => {
-        if (!state.isTranslating) {
-          if (!state.isEnabled) {
-            state.isEnabled = true;
-            storage.set("translation-enabled", "true");
-            updateButtonState();
-          }
-          translateCurrentLyrics();
-        }
-      }, 1500);
+      if (!state.isEnabled) {
+        state.isEnabled = true;
+        storage.set("translation-enabled", "true");
+        updateButtonState();
+      }
+      waitForLyricsAndTranslate(10, 800);
     }
   }
   function injectStylesIntoPIP() {
@@ -1575,7 +1593,7 @@ var SpicyLyricTranslater = (() => {
             storage.set("translation-enabled", "true");
             updateButtonState();
           }
-          waitForLyricsAndTranslate();
+          waitForLyricsAndTranslate(15, 1e3);
         }
       });
     }

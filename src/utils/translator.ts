@@ -27,6 +27,69 @@ export type ApiPreference = 'google' | 'libretranslate' | 'custom';
 let preferredApi: ApiPreference = 'google';
 let customApiUrl: string = '';
 
+// Rate limiting configuration
+const RATE_LIMIT = {
+    minDelayMs: 100,      // Minimum delay between API calls
+    maxDelayMs: 2000,     // Maximum delay (for exponential backoff)
+    maxRetries: 3,        // Maximum retry attempts
+    backoffMultiplier: 2  // Exponential backoff multiplier
+};
+
+// Last API call timestamp for rate limiting
+let lastApiCallTime = 0;
+
+// Use a unique separator that won't appear in lyrics
+const BATCH_SEPARATOR = '\n\u200B\u2063\u200B\n'; // Zero-width space + invisible separator + zero-width space
+const BATCH_SEPARATOR_REGEX = /\n?[\u200B\u2063]+\n?/g;
+
+/**
+ * Delay execution with rate limiting
+ */
+async function rateLimitedDelay(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastCall = now - lastApiCallTime;
+    if (timeSinceLastCall < RATE_LIMIT.minDelayMs) {
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.minDelayMs - timeSinceLastCall));
+    }
+    lastApiCallTime = Date.now();
+}
+
+/**
+ * Retry with exponential backoff
+ */
+async function retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = RATE_LIMIT.maxRetries,
+    baseDelay: number = RATE_LIMIT.minDelayMs
+): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            await rateLimitedDelay();
+            return await fn();
+        } catch (error) {
+            lastError = error as Error;
+            
+            // Don't retry on client errors (4xx)
+            if (error instanceof Error && error.message.includes('40')) {
+                throw error;
+            }
+            
+            if (attempt < maxRetries) {
+                const delay = Math.min(
+                    baseDelay * Math.pow(RATE_LIMIT.backoffMultiplier, attempt),
+                    RATE_LIMIT.maxDelayMs
+                );
+                console.log(`[SpicyLyricTranslater] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    
+    throw lastError || new Error('All retry attempts failed');
+}
+
 /**
  * Set the preferred API for translations
  */
@@ -47,6 +110,7 @@ export function getPreferredApi(): { api: ApiPreference; customUrl: string } {
 
 // Cache expiry time: 7 days
 const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 500; // Reduced from 1000 to prevent excessive storage use
 
 // Supported languages (sorted alphabetically by name)
 export const SUPPORTED_LANGUAGES: { code: string; name: string }[] = [
@@ -189,12 +253,32 @@ function cacheTranslation(text: string, targetLang: string, translation: string)
         timestamp: Date.now()
     };
     
-    // Limit cache size to 1000 entries
+    // Limit cache size
     const keys = Object.keys(cache);
-    if (keys.length > 1000) {
-        // Remove oldest entries
-        const sorted = keys.sort((a, b) => cache[a].timestamp - cache[b].timestamp);
-        const toRemove = sorted.slice(0, keys.length - 1000);
+    if (keys.length > MAX_CACHE_ENTRIES) {
+        // Remove oldest entries + expired entries
+        const now = Date.now();
+        const sorted = keys
+            .map(k => ({ key: k, entry: cache[k] }))
+            .sort((a, b) => a.entry.timestamp - b.entry.timestamp);
+        
+        // Remove expired first, then oldest if still over limit
+        const toRemove = sorted.filter(item => 
+            now - item.entry.timestamp > CACHE_EXPIRY
+        ).map(item => item.key);
+        
+        // If still over limit, remove oldest non-expired
+        const remaining = keys.length - toRemove.length;
+        if (remaining > MAX_CACHE_ENTRIES) {
+            const validSorted = sorted.filter(item => 
+                now - item.entry.timestamp <= CACHE_EXPIRY
+            );
+            const additionalRemove = validSorted
+                .slice(0, remaining - MAX_CACHE_ENTRIES)
+                .map(item => item.key);
+            toRemove.push(...additionalRemove);
+        }
+        
         toRemove.forEach(k => delete cache[k]);
     }
     
@@ -453,73 +537,85 @@ export async function translateText(text: string, targetLang: string): Promise<T
 
 /**
  * Translate multiple lines of lyrics
+ * Uses batching with invisible separators for efficiency
  */
 export async function translateLyrics(lines: string[], targetLang: string): Promise<TranslationResult[]> {
     const results: TranslationResult[] = [];
     
-    // Batch translate to reduce API calls
-    // Join lines with a unique separator and translate together
-    const separator = '\n###LYRIC_LINE###\n';
-    const combinedText = lines.filter(l => l.trim()).join(separator);
+    // Check cache first and separate cached vs uncached lines
+    const cachedResults: Map<number, TranslationResult> = new Map();
+    const uncachedLines: { index: number; text: string }[] = [];
     
-    if (!combinedText.trim()) {
-        return lines.map(line => ({
-            originalText: line,
-            translatedText: line,
-            targetLanguage: targetLang,
-            wasTranslated: false
-        }));
-    }
-    
-    try {
-        const result = await translateText(combinedText, targetLang);
-        const translatedLines = result.translatedText.split(/\n?###LYRIC_LINE###\n?/);
-        
-        let translatedIndex = 0;
-        for (const line of lines) {
-            if (line.trim()) {
-                results.push({
+    lines.forEach((line, index) => {
+        if (!line.trim()) {
+            cachedResults.set(index, {
+                originalText: line,
+                translatedText: line,
+                targetLanguage: targetLang,
+                wasTranslated: false
+            });
+        } else {
+            const cached = getCachedTranslation(line, targetLang);
+            if (cached) {
+                cachedResults.set(index, {
                     originalText: line,
-                    translatedText: translatedLines[translatedIndex] || line,
+                    translatedText: cached,
                     targetLanguage: targetLang,
-                    wasTranslated: result.wasTranslated
+                    wasTranslated: cached !== line
                 });
-                translatedIndex++;
             } else {
-                results.push({
-                    originalText: line,
-                    translatedText: line,
-                    targetLanguage: targetLang,
-                    wasTranslated: false
-                });
+                uncachedLines.push({ index, text: line });
             }
         }
+    });
+    
+    // If all lines are cached, return early
+    if (uncachedLines.length === 0) {
+        console.log('[SpicyLyricTranslater] All lines found in cache');
+        return lines.map((_, index) => cachedResults.get(index)!);
+    }
+    
+    console.log(`[SpicyLyricTranslater] ${cachedResults.size} cached, ${uncachedLines.length} to translate`);
+    
+    // Batch translate uncached lines using invisible separator
+    const combinedText = uncachedLines.map(l => l.text).join(BATCH_SEPARATOR);
+    
+    try {
+        const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+        const translatedLines = result.translatedText.split(BATCH_SEPARATOR_REGEX);
+        
+        // Map translations back to their indices
+        uncachedLines.forEach((item, i) => {
+            const translation = translatedLines[i]?.trim() || item.text;
+            cachedResults.set(item.index, {
+                originalText: item.text,
+                translatedText: translation,
+                targetLanguage: targetLang,
+                wasTranslated: result.wasTranslated && translation !== item.text
+            });
+        });
     } catch (error) {
         console.error('[SpicyLyricTranslater] Batch translation failed, falling back to line-by-line:', error);
         
-        // Fall back to translating line by line
-        for (const line of lines) {
-            if (line.trim()) {
-                try {
-                    const result = await translateText(line, targetLang);
-                    results.push(result);
-                } catch {
-                    results.push({
-                        originalText: line,
-                        translatedText: line,
-                        targetLanguage: targetLang,
-                        wasTranslated: false
-                    });
-                }
-            } else {
-                results.push({
-                    originalText: line,
-                    translatedText: line,
+        // Fall back to translating line by line with delay between calls
+        for (const item of uncachedLines) {
+            try {
+                const result = await retryWithBackoff(() => translateText(item.text, targetLang));
+                cachedResults.set(item.index, result);
+            } catch {
+                cachedResults.set(item.index, {
+                    originalText: item.text,
+                    translatedText: item.text,
                     targetLanguage: targetLang,
                     wasTranslated: false
                 });
             }
         }
+    }
+    
+    // Build final results array in order
+    for (let i = 0; i < lines.length; i++) {
+        results.push(cachedResults.get(i)!);
     }
     
     return results;
@@ -532,10 +628,81 @@ export function clearTranslationCache(): void {
     storage.remove('translation-cache');
 }
 
+/**
+ * Get cache statistics
+ */
+export function getCacheStats(): { entries: number; oldestTimestamp: number | null; sizeBytes: number } {
+    const cache = storage.getJSON<TranslationCache>('translation-cache', {});
+    const keys = Object.keys(cache);
+    
+    if (keys.length === 0) {
+        return { entries: 0, oldestTimestamp: null, sizeBytes: 0 };
+    }
+    
+    const timestamps = keys.map(k => cache[k].timestamp);
+    const sizeBytes = JSON.stringify(cache).length * 2; // UTF-16
+    
+    return {
+        entries: keys.length,
+        oldestTimestamp: Math.min(...timestamps),
+        sizeBytes
+    };
+}
+
+/**
+ * Get all cached translations for viewing
+ */
+export function getCachedTranslations(): Array<{ original: string; translated: string; language: string; date: Date }> {
+    const cache = storage.getJSON<TranslationCache>('translation-cache', {});
+    const entries: Array<{ original: string; translated: string; language: string; date: Date }> = [];
+    
+    for (const key of Object.keys(cache)) {
+        const [lang, ...textParts] = key.split(':');
+        const original = textParts.join(':'); // Rejoin in case text had colons
+        entries.push({
+            original,
+            translated: cache[key].translation,
+            language: lang,
+            date: new Date(cache[key].timestamp)
+        });
+    }
+    
+    // Sort by date, newest first
+    entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+    
+    return entries;
+}
+
+/**
+ * Delete a specific cached translation
+ */
+export function deleteCachedTranslation(original: string, language: string): boolean {
+    const cache = storage.getJSON<TranslationCache>('translation-cache', {});
+    const key = `${language}:${original}`;
+    
+    if (cache[key]) {
+        delete cache[key];
+        storage.setJSON('translation-cache', cache);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check if we're likely offline
+ */
+export function isOffline(): boolean {
+    return typeof navigator !== 'undefined' && !navigator.onLine;
+}
+
 export default {
     translateText,
     translateLyrics,
     clearTranslationCache,
+    getCacheStats,
+    getCachedTranslations,
+    deleteCachedTranslation,
+    isOffline,
     setPreferredApi,
     getPreferredApi,
     SUPPORTED_LANGUAGES

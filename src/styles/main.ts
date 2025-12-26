@@ -125,29 +125,6 @@ export const styles = `
     /* Inherit all text styling from parent */
 }
 
-/* ========================================
-   TRANSLATION DISPLAY STYLES
-   ======================================== */
-
-/* Hide original content completely when showing translation only */
-.spicy-hidden-original {
-    display: none !important;
-    visibility: hidden !important;
-    position: absolute !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-}
-
-/* Translated text - inherits styling from parent line */
-/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
-.spicy-translation-text {
-    display: inline !important;
-    pointer-events: none !important;
-    /* Inherit all text styling from parent */
-}
-
 /* Wrapper for original content (used for line-synced lyrics) */
 .spicy-original-wrapper {
     display: contents;
@@ -165,6 +142,24 @@ export const styles = `
 /* Ensure translation container doesn't interfere with clicks */
 .spicy-translation-container {
     pointer-events: none !important;
+}
+
+/* ========================================
+   CACHE VIEWER STYLES
+   ======================================== */
+
+.cache-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.cache-delete-btn {
+    opacity: 0.6;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.cache-delete-btn:hover {
+    opacity: 1;
+    background: #e74c3c !important;
 }
 
 /* ========================================

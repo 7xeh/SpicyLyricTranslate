@@ -8,7 +8,7 @@
 
 import { Icons } from './utils/icons';
 import { storage } from './utils/storage';
-import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './utils/translator';
+import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
 import { injectStyles } from './styles/main';
 
 // Extension state
@@ -23,6 +23,7 @@ interface ExtensionState {
     lastTranslatedSongUri: string | null;
     translatedLyrics: Map<string, string>;
     lastViewMode: string | null;
+    translationAbortController: AbortController | null;  // For cancelling translations
 }
 
 const state: ExtensionState = {
@@ -35,12 +36,51 @@ const state: ExtensionState = {
     customApiUrl: storage.get('custom-api-url') || '',
     lastTranslatedSongUri: null,
     translatedLyrics: new Map(),
-    lastViewMode: null
+    lastViewMode: null,
+    translationAbortController: null
 };
 
 // DOM observer for Spicy Lyrics
 let viewControlsObserver: MutationObserver | null = null;
 let lyricsObserver: MutationObserver | null = null;
+let translateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Constants
+const TRANSLATION_DEBOUNCE_MS = 300;
+const MAX_LYRICS_CACHE_SIZE = 100;  // Max lyrics per song to keep in memory
+
+/**
+ * Format bytes to human readable string
+ */
+function formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/**
+ * Truncate text with ellipsis
+ */
+function truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
+}
+
+/**
+ * Debounce function to prevent rapid API calls
+ */
+function debounce<T extends (...args: unknown[]) => unknown>(
+    func: T,
+    wait: number
+): (...args: Parameters<T>) => void {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    return (...args: Parameters<T>) => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
 
 /**
  * Wait for an element to exist in the DOM
@@ -467,6 +507,23 @@ async function translateCurrentLyrics(): Promise<void> {
         return;
     }
     
+    // Check if offline and show appropriate message
+    if (isOffline()) {
+        const cacheStats = getCacheStats();
+        if (cacheStats.entries > 0) {
+            console.log('[SpicyLyricTranslater] Offline - will use cached translations only');
+            if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+                Spicetify.showNotification('Offline - using cached translations');
+            }
+        } else {
+            console.log('[SpicyLyricTranslater] Offline with no cache available');
+            if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+                Spicetify.showNotification('Offline - translations unavailable', true);
+            }
+            return;
+        }
+    }
+    
     // Get all available lines from any context
     const lines = getLyricsLines();
     
@@ -777,10 +834,18 @@ function showSettingsModal(): void {
         </div>
         <div class="setting-item">
             <div>
-                <div class="setting-label">Clear Cache</div>
-                <div class="setting-description">Clear cached translations to free up space</div>
+                <div class="setting-label">Translation Cache</div>
+                <div class="setting-description">${getCacheStats().entries} cached translations (${formatBytes(getCacheStats().sizeBytes)})</div>
             </div>
-            <button id="spicy-translate-clear-cache">Clear Cache</button>
+            <div style="display: flex; gap: 8px;">
+                <button id="spicy-translate-view-cache">View Cache</button>
+                <button id="spicy-translate-clear-cache">Clear All</button>
+            </div>
+        </div>
+        <div class="setting-item" style="border-bottom: none; opacity: 0.7; font-size: 12px;">
+            <div>
+                <div class="setting-description">Keyboard shortcut: Alt+T to toggle translation</div>
+            </div>
         </div>
     `;
     
@@ -792,6 +857,7 @@ function showSettingsModal(): void {
         const customApiUrlInput = document.getElementById('spicy-translate-custom-api-url') as HTMLInputElement;
         const autoToggle = document.getElementById('spicy-translate-auto');
         const notificationsToggle = document.getElementById('spicy-translate-notifications');
+        const viewCacheBtn = document.getElementById('spicy-translate-view-cache');
         const clearCacheBtn = document.getElementById('spicy-translate-clear-cache');
         
         if (langSelect) {
@@ -843,12 +909,22 @@ function showSettingsModal(): void {
             });
         }
         
+        if (viewCacheBtn) {
+            viewCacheBtn.addEventListener('click', () => {
+                Spicetify.PopupModal.hide();
+                setTimeout(() => showCacheViewerModal(), 150);
+            });
+        }
+        
         if (clearCacheBtn) {
             clearCacheBtn.addEventListener('click', () => {
                 clearTranslationCache();
                 if (state.showNotifications && Spicetify.showNotification) {
                     Spicetify.showNotification('Translation cache cleared!');
                 }
+                // Close and reopen to refresh cache count
+                Spicetify.PopupModal.hide();
+                setTimeout(() => showSettingsModal(), 100);
             });
         }
     }, 100);
@@ -857,6 +933,114 @@ function showSettingsModal(): void {
         title: 'Spicy Lyric Translater Settings',
         content: content,
         isLarge: false
+    });
+}
+
+/**
+ * Show cache viewer modal with all cached translations
+ */
+function showCacheViewerModal(): void {
+    if (typeof Spicetify === 'undefined' || !Spicetify.PopupModal) {
+        return;
+    }
+    
+    const cachedItems = getCachedTranslations();
+    const stats = getCacheStats();
+    
+    const content = document.createElement('div');
+    content.className = 'spicy-translate-settings';
+    
+    if (cachedItems.length === 0) {
+        content.innerHTML = `
+            <div style="text-align: center; padding: 20px; opacity: 0.7;">
+                <p>No cached translations yet.</p>
+                <p style="font-size: 12px;">Translations will be cached here as you use the extension.</p>
+            </div>
+            <div class="setting-item" style="border-bottom: none;">
+                <button id="spicy-cache-back">Back to Settings</button>
+            </div>
+        `;
+    } else {
+        const itemsHtml = cachedItems.slice(0, 50).map((item, index) => `
+            <div class="cache-item" data-index="${index}" style="padding: 8px 0; border-bottom: 1px solid var(--spice-misc, #535353);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} • ${item.date.toLocaleDateString()}</div>
+                        <div style="font-size: 13px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.original}">${truncateText(item.original, 40)}</div>
+                        <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.translated}">${truncateText(item.translated, 40)}</div>
+                    </div>
+                    <button class="cache-delete-btn" data-original="${encodeURIComponent(item.original)}" data-lang="${item.language}" style="padding: 4px 8px; font-size: 12px; flex-shrink: 0;">✕</button>
+                </div>
+            </div>
+        `).join('');
+        
+        content.innerHTML = `
+            <div style="margin-bottom: 12px; opacity: 0.7; font-size: 12px;">
+                Showing ${Math.min(cachedItems.length, 50)} of ${stats.entries} cached translations (${formatBytes(stats.sizeBytes)})
+            </div>
+            <div id="spicy-cache-list" style="max-height: 300px; overflow-y: auto;">
+                ${itemsHtml}
+            </div>
+            <div class="setting-item" style="border-bottom: none; margin-top: 12px; display: flex; gap: 8px;">
+                <button id="spicy-cache-back">Back to Settings</button>
+                <button id="spicy-cache-clear-all" style="background: #e74c3c;">Clear All</button>
+            </div>
+        `;
+    }
+    
+    // Add event listeners
+    setTimeout(() => {
+        const backBtn = document.getElementById('spicy-cache-back');
+        const clearAllBtn = document.getElementById('spicy-cache-clear-all');
+        const deleteButtons = document.querySelectorAll('.cache-delete-btn');
+        
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                Spicetify.PopupModal.hide();
+                setTimeout(() => showSettingsModal(), 100);
+            });
+        }
+        
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => {
+                clearTranslationCache();
+                if (state.showNotifications && Spicetify.showNotification) {
+                    Spicetify.showNotification('Translation cache cleared!');
+                }
+                Spicetify.PopupModal.hide();
+                setTimeout(() => showSettingsModal(), 100);
+            });
+        }
+        
+        deleteButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const button = e.target as HTMLButtonElement;
+                const original = decodeURIComponent(button.dataset.original || '');
+                const lang = button.dataset.lang || '';
+                
+                if (deleteCachedTranslation(original, lang)) {
+                    // Remove the item from the list
+                    const cacheItem = button.closest('.cache-item');
+                    if (cacheItem) {
+                        cacheItem.remove();
+                    }
+                    
+                    // Update the count display
+                    const newStats = getCacheStats();
+                    const countDisplay = content.querySelector('div[style*="margin-bottom: 12px"]');
+                    if (countDisplay) {
+                        const remaining = getCachedTranslations().length;
+                        countDisplay.textContent = `Showing ${Math.min(remaining, 50)} of ${newStats.entries} cached translations (${formatBytes(newStats.sizeBytes)})`;
+                    }
+                }
+            });
+        });
+    }, 100);
+    
+    Spicetify.PopupModal.display({
+        title: 'Translation Cache',
+        content: content,
+        isLarge: true
     });
 }
 
@@ -1269,6 +1453,23 @@ function setupViewModeObserver(): void {
 }
 
 /**
+ * Setup keyboard shortcut for quick toggle
+ * Alt+T = Toggle translation on/off (Ctrl+Shift+T conflicts with DevTools)
+ */
+function setupKeyboardShortcut(): void {
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+        // Alt+T to toggle translation (avoids Ctrl+Shift+T DevTools conflict)
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 't') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isSpicyLyricsOpen()) {
+                handleTranslateToggle();
+            }
+        }
+    });
+}
+
+/**
  * Initialize the extension
  */
 async function initialize(): Promise<void> {
@@ -1295,6 +1496,9 @@ async function initialize(): Promise<void> {
     
     // Register settings menu
     registerSettingsMenu();
+    
+    // Setup keyboard shortcut (Ctrl+Shift+T to toggle translation)
+    setupKeyboardShortcut();
     
     // Setup page observer
     setupPageObserver();
@@ -1352,13 +1556,22 @@ window.SpicyLyricTranslater = {
         storage.set('translation-enabled', 'false');
         removeTranslations();
     },
+    toggle: () => {
+        if (isSpicyLyricsOpen()) {
+            handleTranslateToggle();
+        }
+    },
     setLanguage: (lang: string) => {
         state.targetLanguage = lang;
         storage.set('target-language', lang);
     },
     translate: translateCurrentLyrics,
     showSettings: showSettingsModal,
+    showCacheViewer: showCacheViewerModal,
     clearCache: clearTranslationCache,
+    getCacheStats: getCacheStats,
+    getCachedTranslations: getCachedTranslations,
+    deleteCachedTranslation: deleteCachedTranslation,
     getState: () => ({ ...state })
 };
 

@@ -1,5 +1,4 @@
 {
-  "id": "spicy-lyric-translater",
   "name": "Spicy Lyric Translater",
   "description": "A Spicetify extension that adds real-time translation to Spicy Lyrics.",
   "authors": [{ "name": "7xeh", "url": "https://github.com/7xeh" }],

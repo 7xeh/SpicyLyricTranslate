@@ -5,7 +5,4 @@
   "main": "./builds/spicy-lyric-translater.js",
   "preview": "./preview.png?raw=true",
   "readme": "README.md",
-  "spicetify": {
-    "minVersion": "2.0.0"
-  }
 }

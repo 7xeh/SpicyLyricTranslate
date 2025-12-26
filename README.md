@@ -8,11 +8,16 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 ## Features
 
 - 🌍 **Translate Button** - Adds a translation toggle to the Spicy Lyrics view controls bar (next to romanize, fullscreen, etc.)
-- 🔄 **20+ Languages** - Supports English, Spanish, French, German, Japanese, Korean, Chinese, and many more
+- 🔄 **100+ Languages** - Supports English, Spanish, French, German, Japanese, Korean, Chinese, and many more
 - 🧠 **Smart Detection** - Automatically skips translation if lyrics are already in your target language
-- 💾 **Caching** - Caches translations for 7 days to reduce API calls and improve performance
+- 💾 **Smart Caching** - Caches translations locally with intelligent cache management
+- 📊 **Cache Viewer** - View, manage, and delete individual cached translations
 - ⚙️ **Customizable** - Right-click the translate button to access settings
-- 🔁 **Auto-Translate** - Optionally translate when lyrics load
+- 🔁 **Auto-Translate** - Optionally translate lyrics automatically when they load
+- ⌨️ **Keyboard Shortcut** - Press `Alt+T` to quickly toggle translation
+- 🔌 **Multiple APIs** - Google Translate (primary), LibreTranslate (fallback), or custom API
+- 🖼️ **Multi-View Support** - Works in main view, Cinema View, and Picture-in-Picture mode
+- 📴 **Offline Support** - Uses cached translations when offline
 
 ## Preview
 
@@ -70,13 +75,41 @@ This script automates installation and setup.
 3. You'll see a new **translate button** (🌐) in the view controls bar  
 4. Click to enable/disable translation  
 5. **Right-click** for settings  
+6. Press **Alt+T** to quickly toggle translation
 
 ### Settings
 
-- **Target Language** – Choose your preferred output language  
-- **Show Original** – Display original lyrics alongside translated ones  
-- **Auto-Translate** – Automatically translate on lyric load  
-- **Clear Cache** – Remove stored translations  
+Access settings by right-clicking the translate button:
+
+- **Target Language** – Choose from 100+ languages  
+- **Preferred API** – Select Google Translate, LibreTranslate, or a custom API  
+- **Custom API URL** – Use your own translation endpoint  
+- **Auto-Translate** – Automatically translate when lyrics load  
+- **Show Notifications** – Toggle translation status notifications  
+- **View Cache** – Browse and manage cached translations  
+- **Clear All** – Remove all stored translations  
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Alt+T` | Toggle translation on/off |
+
+### API (Developer)
+
+Access the extension programmatically via `window.SpicyLyricTranslater`:
+
+```javascript
+SpicyLyricTranslater.enable()           // Enable translation
+SpicyLyricTranslater.disable()          // Disable translation
+SpicyLyricTranslater.toggle()           // Toggle translation
+SpicyLyricTranslater.setLanguage('es')  // Set target language
+SpicyLyricTranslater.showSettings()     // Open settings modal
+SpicyLyricTranslater.showCacheViewer()  // Open cache viewer
+SpicyLyricTranslater.clearCache()       // Clear all cached translations
+SpicyLyricTranslater.getCacheStats()    // Get cache statistics
+SpicyLyricTranslater.getState()         // Get current extension state
+```  
 
 ## Supported Languages
 
@@ -95,9 +128,19 @@ This script automates installation and setup.
 
 ## How It Works
 
-Uses Google Translate with LibreTranslate as fallback.  
-Automatically detects the source language and avoids unnecessary translations.  
-Results are cached locally for 7 days.
+1. **Translation** - Uses Google Translate API with LibreTranslate as fallback
+2. **Language Detection** - Automatically detects source language and skips if already in target language
+3. **Batch Processing** - Translates all lyrics at once for efficiency with rate limiting
+4. **Smart Caching** - Results cached locally (up to 500 entries) with 7-day expiry
+5. **Retry Logic** - Automatic retries with exponential backoff on failures
+6. **Offline Mode** - Falls back to cached translations when offline
+
+## Technical Details
+
+- **Storage**: Uses browser localStorage with `spicy-lyric-translater:` prefix
+- **Cache Limit**: 500 entries max, automatically prunes oldest entries
+- **Rate Limiting**: 100ms minimum delay between API calls
+- **Retry Policy**: Up to 3 retries with exponential backoff
 
 ## Development
 

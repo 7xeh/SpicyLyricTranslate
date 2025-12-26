@@ -5,4 +5,13 @@
   "main": "./builds/spicy-lyric-translater.js",
   "preview": "./preview.png?raw=true",
   "readme": "README.md",
+  "tags": [
+      "lyrics",
+      "spicy-lyrics",
+      "lyric-translation",
+      "song-translation",
+      "translated-lyrics",
+      "lyrics-in-english",
+      "multilingual-lyrics",
+    ]
 }

@@ -9,8 +9,7 @@ var SpicyLyricTranslater = (() => {
   var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
     get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
   }) : x)(function(x) {
-    if (typeof require !== "undefined")
-      return require.apply(this, arguments);
+    if (typeof require !== "undefined") return require.apply(this, arguments);
     throw Error('Dynamic require of "' + x + '" is not supported');
   });
   var __export = (target, all) => {
@@ -64,9 +63,37 @@ var SpicyLyricTranslater = (() => {
 
   // src/utils/storage.ts
   var STORAGE_PREFIX = "spicy-lyric-translater:";
+  var MAX_STORAGE_SIZE_BYTES = 4 * 1024 * 1024;
+  function isLocalStorageAvailable() {
+    try {
+      const test = "__storage_test__";
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function getStorageSize() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(STORAGE_PREFIX)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            total += key.length + value.length;
+          }
+        }
+      }
+    } catch (e) {
+    }
+    return total * 2;
+  }
   var storage = {
     get(key) {
       try {
+        if (!isLocalStorageAvailable()) return null;
         return localStorage.getItem(STORAGE_PREFIX + key);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage get error:", e);
@@ -75,13 +102,34 @@ var SpicyLyricTranslater = (() => {
     },
     set(key, value) {
       try {
+        if (!isLocalStorageAvailable()) return false;
+        if (value.length > 1e4) {
+          const currentSize = getStorageSize();
+          if (currentSize + value.length * 2 > MAX_STORAGE_SIZE_BYTES) {
+            console.warn("[SpicyLyricTranslater] Storage limit approaching, clearing old cache");
+            this.remove("translation-cache");
+          }
+        }
         localStorage.setItem(STORAGE_PREFIX + key, value);
+        return true;
       } catch (e) {
+        if (e instanceof DOMException && e.name === "QuotaExceededError") {
+          console.warn("[SpicyLyricTranslater] Storage quota exceeded, clearing cache");
+          this.remove("translation-cache");
+          try {
+            localStorage.setItem(STORAGE_PREFIX + key, value);
+            return true;
+          } catch {
+            return false;
+          }
+        }
         console.error("[SpicyLyricTranslater] Storage set error:", e);
+        return false;
       }
     },
     remove(key) {
       try {
+        if (!isLocalStorageAvailable()) return;
         localStorage.removeItem(STORAGE_PREFIX + key);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage remove error:", e);
@@ -90,8 +138,7 @@ var SpicyLyricTranslater = (() => {
     getJSON(key, defaultValue) {
       try {
         const value = this.get(key);
-        if (value === null)
-          return defaultValue;
+        if (value === null) return defaultValue;
         return JSON.parse(value);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage getJSON error:", e);
@@ -100,9 +147,38 @@ var SpicyLyricTranslater = (() => {
     },
     setJSON(key, value) {
       try {
-        this.set(key, JSON.stringify(value));
+        return this.set(key, JSON.stringify(value));
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage setJSON error:", e);
+        return false;
+      }
+    },
+    /**
+     * Get storage usage statistics
+     */
+    getStats() {
+      const used = getStorageSize();
+      return {
+        usedBytes: used,
+        maxBytes: MAX_STORAGE_SIZE_BYTES,
+        percentUsed: Math.round(used / MAX_STORAGE_SIZE_BYTES * 100)
+      };
+    },
+    /**
+     * Clear all extension storage
+     */
+    clearAll() {
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key?.startsWith(STORAGE_PREFIX)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((key) => localStorage.removeItem(key));
+      } catch (e) {
+        console.error("[SpicyLyricTranslater] Storage clearAll error:", e);
       }
     }
   };
@@ -111,6 +187,50 @@ var SpicyLyricTranslater = (() => {
   // src/utils/translator.ts
   var preferredApi = "google";
   var customApiUrl = "";
+  var RATE_LIMIT = {
+    minDelayMs: 100,
+    // Minimum delay between API calls
+    maxDelayMs: 2e3,
+    // Maximum delay (for exponential backoff)
+    maxRetries: 3,
+    // Maximum retry attempts
+    backoffMultiplier: 2
+    // Exponential backoff multiplier
+  };
+  var lastApiCallTime = 0;
+  var BATCH_SEPARATOR = "\n\u200B\u2063\u200B\n";
+  var BATCH_SEPARATOR_REGEX = /\n?[\u200B\u2063]+\n?/g;
+  async function rateLimitedDelay() {
+    const now = Date.now();
+    const timeSinceLastCall = now - lastApiCallTime;
+    if (timeSinceLastCall < RATE_LIMIT.minDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT.minDelayMs - timeSinceLastCall));
+    }
+    lastApiCallTime = Date.now();
+  }
+  async function retryWithBackoff(fn, maxRetries = RATE_LIMIT.maxRetries, baseDelay = RATE_LIMIT.minDelayMs) {
+    let lastError = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await rateLimitedDelay();
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (error instanceof Error && error.message.includes("40")) {
+          throw error;
+        }
+        if (attempt < maxRetries) {
+          const delay = Math.min(
+            baseDelay * Math.pow(RATE_LIMIT.backoffMultiplier, attempt),
+            RATE_LIMIT.maxDelayMs
+          );
+          console.log(`[SpicyLyricTranslater] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError || new Error("All retry attempts failed");
+  }
   function setPreferredApi(api, customUrl2) {
     preferredApi = api;
     if (customUrl2 !== void 0) {
@@ -119,6 +239,7 @@ var SpicyLyricTranslater = (() => {
     console.log(`[SpicyLyricTranslater] API preference set to: ${api}${api === "custom" ? ` (${customUrl2})` : ""}`);
   }
   var CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1e3;
+  var MAX_CACHE_ENTRIES = 500;
   var SUPPORTED_LANGUAGES = [
     { code: "af", name: "Afrikaans" },
     { code: "sq", name: "Albanian" },
@@ -247,9 +368,20 @@ var SpicyLyricTranslater = (() => {
       timestamp: Date.now()
     };
     const keys = Object.keys(cache);
-    if (keys.length > 1e3) {
-      const sorted = keys.sort((a, b) => cache[a].timestamp - cache[b].timestamp);
-      const toRemove = sorted.slice(0, keys.length - 1e3);
+    if (keys.length > MAX_CACHE_ENTRIES) {
+      const now = Date.now();
+      const sorted = keys.map((k) => ({ key: k, entry: cache[k] })).sort((a, b) => a.entry.timestamp - b.entry.timestamp);
+      const toRemove = sorted.filter(
+        (item) => now - item.entry.timestamp > CACHE_EXPIRY
+      ).map((item) => item.key);
+      const remaining = keys.length - toRemove.length;
+      if (remaining > MAX_CACHE_ENTRIES) {
+        const validSorted = sorted.filter(
+          (item) => now - item.entry.timestamp <= CACHE_EXPIRY
+        );
+        const additionalRemove = validSorted.slice(0, remaining - MAX_CACHE_ENTRIES).map((item) => item.key);
+        toRemove.push(...additionalRemove);
+      }
       toRemove.forEach((k) => delete cache[k]);
     }
     storage_default.setJSON("translation-cache", cache);
@@ -338,8 +470,7 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function isSameLanguage(detected, target) {
-    if (!detected || detected === "unknown")
-      return false;
+    if (!detected || detected === "unknown") return false;
     const normalizedDetected = detected.toLowerCase().split("-")[0];
     const normalizedTarget = target.toLowerCase().split("-")[0];
     return normalizedDetected === normalizedTarget;
@@ -436,67 +567,114 @@ var SpicyLyricTranslater = (() => {
   }
   async function translateLyrics(lines, targetLang) {
     const results = [];
-    const separator = "\n###LYRIC_LINE###\n";
-    const combinedText = lines.filter((l) => l.trim()).join(separator);
-    if (!combinedText.trim()) {
-      return lines.map((line) => ({
-        originalText: line,
-        translatedText: line,
-        targetLanguage: targetLang,
-        wasTranslated: false
-      }));
-    }
-    try {
-      const result = await translateText(combinedText, targetLang);
-      const translatedLines = result.translatedText.split(/\n?###LYRIC_LINE###\n?/);
-      let translatedIndex = 0;
-      for (const line of lines) {
-        if (line.trim()) {
-          results.push({
+    const cachedResults = /* @__PURE__ */ new Map();
+    const uncachedLines = [];
+    lines.forEach((line, index) => {
+      if (!line.trim()) {
+        cachedResults.set(index, {
+          originalText: line,
+          translatedText: line,
+          targetLanguage: targetLang,
+          wasTranslated: false
+        });
+      } else {
+        const cached = getCachedTranslation(line, targetLang);
+        if (cached) {
+          cachedResults.set(index, {
             originalText: line,
-            translatedText: translatedLines[translatedIndex] || line,
+            translatedText: cached,
             targetLanguage: targetLang,
-            wasTranslated: result.wasTranslated
+            wasTranslated: cached !== line
           });
-          translatedIndex++;
         } else {
-          results.push({
-            originalText: line,
-            translatedText: line,
-            targetLanguage: targetLang,
-            wasTranslated: false
-          });
+          uncachedLines.push({ index, text: line });
         }
       }
+    });
+    if (uncachedLines.length === 0) {
+      console.log("[SpicyLyricTranslater] All lines found in cache");
+      return lines.map((_, index) => cachedResults.get(index));
+    }
+    console.log(`[SpicyLyricTranslater] ${cachedResults.size} cached, ${uncachedLines.length} to translate`);
+    const combinedText = uncachedLines.map((l) => l.text).join(BATCH_SEPARATOR);
+    try {
+      const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+      const translatedLines = result.translatedText.split(BATCH_SEPARATOR_REGEX);
+      uncachedLines.forEach((item, i) => {
+        const translation = translatedLines[i]?.trim() || item.text;
+        cachedResults.set(item.index, {
+          originalText: item.text,
+          translatedText: translation,
+          targetLanguage: targetLang,
+          wasTranslated: result.wasTranslated && translation !== item.text
+        });
+      });
     } catch (error) {
       console.error("[SpicyLyricTranslater] Batch translation failed, falling back to line-by-line:", error);
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const result = await translateText(line, targetLang);
-            results.push(result);
-          } catch {
-            results.push({
-              originalText: line,
-              translatedText: line,
-              targetLanguage: targetLang,
-              wasTranslated: false
-            });
-          }
-        } else {
-          results.push({
-            originalText: line,
-            translatedText: line,
+      for (const item of uncachedLines) {
+        try {
+          const result = await retryWithBackoff(() => translateText(item.text, targetLang));
+          cachedResults.set(item.index, result);
+        } catch {
+          cachedResults.set(item.index, {
+            originalText: item.text,
+            translatedText: item.text,
             targetLanguage: targetLang,
             wasTranslated: false
           });
         }
       }
+    }
+    for (let i = 0; i < lines.length; i++) {
+      results.push(cachedResults.get(i));
     }
     return results;
   }
   function clearTranslationCache() {
     storage_default.remove("translation-cache");
+  }
+  function getCacheStats() {
+    const cache = storage_default.getJSON("translation-cache", {});
+    const keys = Object.keys(cache);
+    if (keys.length === 0) {
+      return { entries: 0, oldestTimestamp: null, sizeBytes: 0 };
+    }
+    const timestamps = keys.map((k) => cache[k].timestamp);
+    const sizeBytes = JSON.stringify(cache).length * 2;
+    return {
+      entries: keys.length,
+      oldestTimestamp: Math.min(...timestamps),
+      sizeBytes
+    };
+  }
+  function getCachedTranslations() {
+    const cache = storage_default.getJSON("translation-cache", {});
+    const entries = [];
+    for (const key of Object.keys(cache)) {
+      const [lang, ...textParts] = key.split(":");
+      const original = textParts.join(":");
+      entries.push({
+        original,
+        translated: cache[key].translation,
+        language: lang,
+        date: new Date(cache[key].timestamp)
+      });
+    }
+    entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return entries;
+  }
+  function deleteCachedTranslation(original, language) {
+    const cache = storage_default.getJSON("translation-cache", {});
+    const key = `${language}:${original}`;
+    if (cache[key]) {
+      delete cache[key];
+      storage_default.setJSON("translation-cache", cache);
+      return true;
+    }
+    return false;
+  }
+  function isOffline() {
+    return typeof navigator !== "undefined" && !navigator.onLine;
   }
 
   // src/styles/main.ts
@@ -622,29 +800,6 @@ var SpicyLyricTranslater = (() => {
     /* Inherit all text styling from parent */
 }
 
-/* ========================================
-   TRANSLATION DISPLAY STYLES
-   ======================================== */
-
-/* Hide original content completely when showing translation only */
-.spicy-hidden-original {
-    display: none !important;
-    visibility: hidden !important;
-    position: absolute !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-}
-
-/* Translated text - inherits styling from parent line */
-/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
-.spicy-translation-text {
-    display: inline !important;
-    pointer-events: none !important;
-    /* Inherit all text styling from parent */
-}
-
 /* Wrapper for original content (used for line-synced lyrics) */
 .spicy-original-wrapper {
     display: contents;
@@ -662,6 +817,24 @@ var SpicyLyricTranslater = (() => {
 /* Ensure translation container doesn't interfere with clicks */
 .spicy-translation-container {
     pointer-events: none !important;
+}
+
+/* ========================================
+   CACHE VIEWER STYLES
+   ======================================== */
+
+.cache-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.cache-delete-btn {
+    opacity: 0.6;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.cache-delete-btn:hover {
+    opacity: 1;
+    background: #e74c3c !important;
 }
 
 /* ========================================
@@ -704,6 +877,265 @@ var SpicyLyricTranslater = (() => {
     document.head.appendChild(styleElement);
   }
 
+  // src/utils/updater.ts
+  var CURRENT_VERSION = "1.4.1";
+  var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
+  var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+  var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
+  var hasShownUpdateNotice = false;
+  var lastCheckTime = 0;
+  var CHECK_INTERVAL_MS = 5 * 60 * 1e3;
+  function parseVersion(version) {
+    const cleanVersion = version.replace(/^v/, "");
+    const match = cleanVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return null;
+    }
+    return {
+      major: parseInt(match[1], 10),
+      minor: parseInt(match[2], 10),
+      patch: parseInt(match[3], 10),
+      text: cleanVersion
+    };
+  }
+  function compareVersions(v1, v2) {
+    if (v1.major !== v2.major) {
+      return v1.major > v2.major ? 1 : -1;
+    }
+    if (v1.minor !== v2.minor) {
+      return v1.minor > v2.minor ? 1 : -1;
+    }
+    if (v1.patch !== v2.patch) {
+      return v1.patch > v2.patch ? 1 : -1;
+    }
+    return 0;
+  }
+  function getCurrentVersion() {
+    return parseVersion(CURRENT_VERSION) || {
+      major: 1,
+      minor: 0,
+      patch: 0,
+      text: CURRENT_VERSION
+    };
+  }
+  async function getLatestVersion() {
+    try {
+      const response = await fetch(GITHUB_API_URL, {
+        headers: {
+          "Accept": "application/vnd.github.v3+json"
+        }
+      });
+      if (!response.ok) {
+        console.warn("[SpicyLyricTranslater] Failed to fetch latest version:", response.status);
+        return null;
+      }
+      const release = await response.json();
+      const version = parseVersion(release.tag_name);
+      if (!version) {
+        console.warn("[SpicyLyricTranslater] Failed to parse version from tag:", release.tag_name);
+        return null;
+      }
+      return { version, release };
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Error fetching latest version:", error);
+      return null;
+    }
+  }
+  function showUpdateModal(currentVersion, latestVersion, release) {
+    const content = document.createElement("div");
+    content.className = "slt-update-modal";
+    content.innerHTML = `
+        <style>
+            .slt-update-modal {
+                padding: 16px;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .update-header {
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 16px;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .version-info {
+                background: var(--spice-card);
+                padding: 12px 16px;
+                border-radius: 8px;
+                margin-bottom: 16px;
+            }
+            .slt-update-modal .version-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .slt-update-modal .version-row:last-child {
+                margin-bottom: 0;
+            }
+            .slt-update-modal .version-label {
+                color: var(--spice-subtext);
+            }
+            .slt-update-modal .version-value {
+                font-weight: 600;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .version-new {
+                color: #1db954;
+            }
+            .slt-update-modal .release-notes {
+                background: var(--spice-card);
+                padding: 12px 16px;
+                border-radius: 8px;
+                margin-bottom: 16px;
+                max-height: 200px;
+                overflow-y: auto;
+            }
+            .slt-update-modal .release-notes-title {
+                font-weight: 600;
+                margin-bottom: 8px;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .release-notes-content {
+                color: var(--spice-subtext);
+                font-size: 13px;
+                white-space: pre-wrap;
+                line-height: 1.5;
+            }
+            .slt-update-modal .update-buttons {
+                display: flex;
+                gap: 12px;
+                justify-content: flex-end;
+            }
+            .slt-update-modal .update-btn {
+                padding: 10px 20px;
+                border-radius: 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .slt-update-modal .update-btn.primary {
+                background: #1db954;
+                color: #000;
+            }
+            .slt-update-modal .update-btn.primary:hover {
+                background: #1ed760;
+                transform: scale(1.02);
+            }
+            .slt-update-modal .update-btn.secondary {
+                background: var(--spice-card);
+                color: var(--spice-text);
+            }
+            .slt-update-modal .update-btn.secondary:hover {
+                background: var(--spice-button);
+            }
+        </style>
+        <div class="update-header">\u{1F389} A new version is available!</div>
+        <div class="version-info">
+            <div class="version-row">
+                <span class="version-label">Current Version:</span>
+                <span class="version-value">${currentVersion.text}</span>
+            </div>
+            <div class="version-row">
+                <span class="version-label">Latest Version:</span>
+                <span class="version-value version-new">${latestVersion.text}</span>
+            </div>
+        </div>
+        ${release.body ? `
+            <div class="release-notes">
+                <div class="release-notes-title">What's New:</div>
+                <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
+            </div>
+        ` : ""}
+        <div class="update-buttons">
+            <button class="update-btn secondary" id="slt-update-later">Later</button>
+            <button class="update-btn primary" id="slt-update-now">Download Update</button>
+        </div>
+    `;
+    if (Spicetify.PopupModal) {
+      Spicetify.PopupModal.display({
+        title: "Spicy Lyric Translater - Update Available",
+        content,
+        isLarge: true
+      });
+      setTimeout(() => {
+        const laterBtn = document.getElementById("slt-update-later");
+        const updateBtn = document.getElementById("slt-update-now");
+        if (laterBtn) {
+          laterBtn.addEventListener("click", () => {
+            Spicetify.PopupModal.hide();
+          });
+        }
+        if (updateBtn) {
+          updateBtn.addEventListener("click", () => {
+            window.open(release.html_url, "_blank");
+            Spicetify.PopupModal.hide();
+          });
+        }
+      }, 100);
+    }
+  }
+  function formatReleaseNotes(body) {
+    return body.replace(/^### (.*)/gm, "<strong>$1</strong>").replace(/^## (.*)/gm, '<strong style="font-size: 14px;">$1</strong>').replace(/^# (.*)/gm, '<strong style="font-size: 16px;">$1</strong>').replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>").replace(/^- (.*)/gm, "\u2022 $1").replace(/\n/g, "<br>");
+  }
+  async function checkForUpdates(force = false) {
+    const now = Date.now();
+    if (!force && now - lastCheckTime < CHECK_INTERVAL_MS) {
+      return;
+    }
+    lastCheckTime = now;
+    if (!force && hasShownUpdateNotice) {
+      return;
+    }
+    try {
+      const latest = await getLatestVersion();
+      if (!latest) return;
+      const current = getCurrentVersion();
+      if (compareVersions(latest.version, current) > 0) {
+        console.log(`[SpicyLyricTranslater] Update available: ${current.text} \u2192 ${latest.version.text}`);
+        showUpdateModal(current, latest.version, latest.release);
+        hasShownUpdateNotice = true;
+      } else {
+        console.log("[SpicyLyricTranslater] Already on latest version:", current.text);
+      }
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Error checking for updates:", error);
+    }
+  }
+  function startUpdateChecker(intervalMs = 30 * 60 * 1e3) {
+    setTimeout(() => {
+      checkForUpdates();
+    }, 5e3);
+    setInterval(() => {
+      checkForUpdates();
+    }, intervalMs);
+    console.log("[SpicyLyricTranslater] Update checker started");
+  }
+  async function getUpdateInfo() {
+    try {
+      const current = getCurrentVersion();
+      const latest = await getLatestVersion();
+      if (!latest) {
+        return {
+          hasUpdate: false,
+          currentVersion: current.text,
+          latestVersion: null,
+          releaseUrl: null
+        };
+      }
+      return {
+        hasUpdate: compareVersions(latest.version, current) > 0,
+        currentVersion: current.text,
+        latestVersion: latest.version.text,
+        releaseUrl: latest.release.html_url
+      };
+    } catch {
+      return null;
+    }
+  }
+  var VERSION = CURRENT_VERSION;
+  var REPO_URL = RELEASES_URL;
+
   // src/app.ts
   var state = {
     isEnabled: false,
@@ -716,10 +1148,22 @@ var SpicyLyricTranslater = (() => {
     customApiUrl: storage.get("custom-api-url") || "",
     lastTranslatedSongUri: null,
     translatedLyrics: /* @__PURE__ */ new Map(),
-    lastViewMode: null
+    lastViewMode: null,
+    translationAbortController: null
   };
   var viewControlsObserver = null;
   var lyricsObserver = null;
+  function formatBytes(bytes) {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  }
+  function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + "...";
+  }
   function waitForElement(selector, timeout = 1e4) {
     return new Promise((resolve) => {
       const element = document.querySelector(selector);
@@ -751,8 +1195,7 @@ var SpicyLyricTranslater = (() => {
     const pipWindow = getPIPWindow();
     if (pipWindow) {
       const pipViewControls = pipWindow.document.querySelector("#SpicyLyricsPage .ViewControls");
-      if (pipViewControls)
-        return pipViewControls;
+      if (pipViewControls) return pipViewControls;
     }
     return document.querySelector("#SpicyLyricsPage .ViewControls") || document.querySelector(".Cinema--Container .ViewControls") || document.querySelector(".spicy-pip-wrapper .ViewControls") || document.querySelector(".ViewControls");
   }
@@ -770,8 +1213,7 @@ var SpicyLyricTranslater = (() => {
     const pipWindow = getPIPWindow();
     if (pipWindow) {
       const pipContent = pipWindow.document.querySelector("#SpicyLyricsPage .LyricsContent") || pipWindow.document.querySelector(".LyricsContainer .LyricsContent");
-      if (pipContent)
-        return pipContent;
+      if (pipContent) return pipContent;
     }
     return document.querySelector("#SpicyLyricsPage .LyricsContent") || document.querySelector(".spicy-pip-wrapper .LyricsContent") || document.querySelector(".Cinema--Container .LyricsContent") || document.querySelector(".LyricsContainer .LyricsContent") || document.querySelector(".LyricsContent");
   }
@@ -815,10 +1257,8 @@ var SpicyLyricTranslater = (() => {
   }
   function insertTranslateButtonIntoDocument(doc) {
     const viewControls = doc.querySelector("#SpicyLyricsPage .ViewControls") || doc.querySelector(".ViewControls");
-    if (!viewControls)
-      return;
-    if (viewControls.querySelector("#TranslateToggle"))
-      return;
+    if (!viewControls) return;
+    if (viewControls.querySelector("#TranslateToggle")) return;
     const romanizeButton = viewControls.querySelector("#RomanizationToggle");
     const translateButton = createTranslateButton();
     if (romanizeButton) {
@@ -960,14 +1400,12 @@ var SpicyLyricTranslater = (() => {
     const wordElements = lineElement.querySelectorAll(".word:not(.dot)");
     if (wordElements.length > 0) {
       const text2 = Array.from(wordElements).map((word) => word.textContent?.trim() || "").filter((t) => t.length > 0 && t !== "\u2022").join(" ").trim();
-      if (text2)
-        return text2;
+      if (text2) return text2;
     }
     const syllableElements = lineElement.querySelectorAll(".syllable");
     if (syllableElements.length > 0) {
       const text2 = Array.from(syllableElements).map((syl) => syl.textContent?.trim() || "").filter((t) => t.length > 0).join("").trim();
-      if (text2)
-        return text2;
+      if (text2) return text2;
     }
     const text = lineElement.textContent?.trim() || "";
     if (/^[•\s]+$/.test(text)) {
@@ -979,6 +1417,21 @@ var SpicyLyricTranslater = (() => {
     if (state.isTranslating) {
       console.log("[SpicyLyricTranslater] Already translating, skipping");
       return;
+    }
+    if (isOffline()) {
+      const cacheStats = getCacheStats();
+      if (cacheStats.entries > 0) {
+        console.log("[SpicyLyricTranslater] Offline - will use cached translations only");
+        if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
+          Spicetify.showNotification("Offline - using cached translations");
+        }
+      } else {
+        console.log("[SpicyLyricTranslater] Offline with no cache available");
+        if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
+          Spicetify.showNotification("Offline - translations unavailable", true);
+        }
+        return;
+      }
     }
     const lines = getLyricsLines();
     if (lines.length === 0) {
@@ -1199,10 +1652,25 @@ var SpicyLyricTranslater = (() => {
         </div>
         <div class="setting-item">
             <div>
-                <div class="setting-label">Clear Cache</div>
-                <div class="setting-description">Clear cached translations to free up space</div>
+                <div class="setting-label">Translation Cache</div>
+                <div class="setting-description">${getCacheStats().entries} cached translations (${formatBytes(getCacheStats().sizeBytes)})</div>
             </div>
-            <button id="spicy-translate-clear-cache">Clear Cache</button>
+            <div style="display: flex; gap: 8px;">
+                <button id="spicy-translate-view-cache">View Cache</button>
+                <button id="spicy-translate-clear-cache">Clear All</button>
+            </div>
+        </div>
+        <div class="setting-item">
+            <div>
+                <div class="setting-label">Version</div>
+                <div class="setting-description">v${VERSION} \u2022 <a href="${REPO_URL}" target="_blank" style="color: var(--spice-button-active);">View on GitHub</a></div>
+            </div>
+            <button id="spicy-translate-check-updates">Check for Updates</button>
+        </div>
+        <div class="setting-item" style="border-bottom: none; opacity: 0.7; font-size: 12px;">
+            <div>
+                <div class="setting-description">Keyboard shortcut: Alt+T to toggle translation</div>
+            </div>
         </div>
     `;
     setTimeout(() => {
@@ -1212,6 +1680,7 @@ var SpicyLyricTranslater = (() => {
       const customApiUrlInput = document.getElementById("spicy-translate-custom-api-url");
       const autoToggle = document.getElementById("spicy-translate-auto");
       const notificationsToggle = document.getElementById("spicy-translate-notifications");
+      const viewCacheBtn = document.getElementById("spicy-translate-view-cache");
       const clearCacheBtn = document.getElementById("spicy-translate-clear-cache");
       if (langSelect) {
         langSelect.addEventListener("change", () => {
@@ -1253,11 +1722,45 @@ var SpicyLyricTranslater = (() => {
           notificationsToggle.classList.toggle("active", state.showNotifications);
         });
       }
+      if (viewCacheBtn) {
+        viewCacheBtn.addEventListener("click", () => {
+          Spicetify.PopupModal.hide();
+          setTimeout(() => showCacheViewerModal(), 150);
+        });
+      }
       if (clearCacheBtn) {
         clearCacheBtn.addEventListener("click", () => {
           clearTranslationCache();
           if (state.showNotifications && Spicetify.showNotification) {
             Spicetify.showNotification("Translation cache cleared!");
+          }
+          Spicetify.PopupModal.hide();
+          setTimeout(() => showSettingsModal(), 100);
+        });
+      }
+      const checkUpdatesBtn = document.getElementById("spicy-translate-check-updates");
+      if (checkUpdatesBtn) {
+        checkUpdatesBtn.addEventListener("click", async () => {
+          checkUpdatesBtn.textContent = "Checking...";
+          checkUpdatesBtn.setAttribute("disabled", "true");
+          try {
+            const info = await getUpdateInfo();
+            if (info?.hasUpdate) {
+              Spicetify.PopupModal.hide();
+              setTimeout(() => checkForUpdates(true), 150);
+            } else {
+              if (Spicetify.showNotification) {
+                Spicetify.showNotification("You're on the latest version!");
+              }
+              checkUpdatesBtn.textContent = "Check for Updates";
+              checkUpdatesBtn.removeAttribute("disabled");
+            }
+          } catch (error) {
+            checkUpdatesBtn.textContent = "Check for Updates";
+            checkUpdatesBtn.removeAttribute("disabled");
+            if (Spicetify.showNotification) {
+              Spicetify.showNotification("Failed to check for updates", true);
+            }
           }
         });
       }
@@ -1266,6 +1769,96 @@ var SpicyLyricTranslater = (() => {
       title: "Spicy Lyric Translater Settings",
       content,
       isLarge: false
+    });
+  }
+  function showCacheViewerModal() {
+    if (typeof Spicetify === "undefined" || !Spicetify.PopupModal) {
+      return;
+    }
+    const cachedItems = getCachedTranslations();
+    const stats = getCacheStats();
+    const content = document.createElement("div");
+    content.className = "spicy-translate-settings";
+    if (cachedItems.length === 0) {
+      content.innerHTML = `
+            <div style="text-align: center; padding: 20px; opacity: 0.7;">
+                <p>No cached translations yet.</p>
+                <p style="font-size: 12px;">Translations will be cached here as you use the extension.</p>
+            </div>
+            <div class="setting-item" style="border-bottom: none;">
+                <button id="spicy-cache-back">Back to Settings</button>
+            </div>
+        `;
+    } else {
+      const itemsHtml = cachedItems.slice(0, 50).map((item, index) => `
+            <div class="cache-item" data-index="${index}" style="padding: 8px 0; border-bottom: 1px solid var(--spice-misc, #535353);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} \u2022 ${item.date.toLocaleDateString()}</div>
+                        <div style="font-size: 13px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.original}">${truncateText(item.original, 40)}</div>
+                        <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.translated}">${truncateText(item.translated, 40)}</div>
+                    </div>
+                    <button class="cache-delete-btn" data-original="${encodeURIComponent(item.original)}" data-lang="${item.language}" style="padding: 4px 8px; font-size: 12px; flex-shrink: 0;">\u2715</button>
+                </div>
+            </div>
+        `).join("");
+      content.innerHTML = `
+            <div style="margin-bottom: 12px; opacity: 0.7; font-size: 12px;">
+                Showing ${Math.min(cachedItems.length, 50)} of ${stats.entries} cached translations (${formatBytes(stats.sizeBytes)})
+            </div>
+            <div id="spicy-cache-list" style="max-height: 300px; overflow-y: auto;">
+                ${itemsHtml}
+            </div>
+            <div class="setting-item" style="border-bottom: none; margin-top: 12px; display: flex; gap: 8px;">
+                <button id="spicy-cache-back">Back to Settings</button>
+                <button id="spicy-cache-clear-all" style="background: #e74c3c;">Clear All</button>
+            </div>
+        `;
+    }
+    setTimeout(() => {
+      const backBtn = document.getElementById("spicy-cache-back");
+      const clearAllBtn = document.getElementById("spicy-cache-clear-all");
+      const deleteButtons = document.querySelectorAll(".cache-delete-btn");
+      if (backBtn) {
+        backBtn.addEventListener("click", () => {
+          Spicetify.PopupModal.hide();
+          setTimeout(() => showSettingsModal(), 100);
+        });
+      }
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener("click", () => {
+          clearTranslationCache();
+          if (state.showNotifications && Spicetify.showNotification) {
+            Spicetify.showNotification("Translation cache cleared!");
+          }
+          Spicetify.PopupModal.hide();
+          setTimeout(() => showSettingsModal(), 100);
+        });
+      }
+      deleteButtons.forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const button = e.target;
+          const original = decodeURIComponent(button.dataset.original || "");
+          const lang = button.dataset.lang || "";
+          if (deleteCachedTranslation(original, lang)) {
+            const cacheItem = button.closest(".cache-item");
+            if (cacheItem) {
+              cacheItem.remove();
+            }
+            const newStats = getCacheStats();
+            const countDisplay = content.querySelector('div[style*="margin-bottom: 12px"]');
+            if (countDisplay) {
+              const remaining = getCachedTranslations().length;
+              countDisplay.textContent = `Showing ${Math.min(remaining, 50)} of ${newStats.entries} cached translations (${formatBytes(newStats.sizeBytes)})`;
+            }
+          }
+        });
+      });
+    }, 100);
+    Spicetify.PopupModal.display({
+      title: "Translation Cache",
+      content,
+      isLarge: true
     });
   }
   function setupViewControlsObserver() {
@@ -1295,8 +1888,7 @@ var SpicyLyricTranslater = (() => {
       lyricsObserver.disconnect();
     }
     lyricsObserver = new MutationObserver((mutations) => {
-      if (!state.isEnabled || state.isTranslating)
-        return;
+      if (!state.isEnabled || state.isTranslating) return;
       const hasNewContent = mutations.some(
         (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
           (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
@@ -1361,10 +1953,8 @@ var SpicyLyricTranslater = (() => {
   }
   function injectStylesIntoPIP() {
     const pipWindow = getPIPWindow();
-    if (!pipWindow)
-      return;
-    if (pipWindow.document.getElementById("spicy-lyric-translater-styles"))
-      return;
+    if (!pipWindow) return;
+    if (pipWindow.document.getElementById("spicy-lyric-translater-styles")) return;
     const mainStyles = document.getElementById("spicy-lyric-translater-styles");
     if (mainStyles) {
       const pipStyles = pipWindow.document.createElement("style");
@@ -1445,8 +2035,7 @@ var SpicyLyricTranslater = (() => {
       for (const mutation of mutations) {
         if (mutation.type === "childList") {
           const isLyricsNode = (node) => {
-            if (node.nodeType !== Node.ELEMENT_NODE)
-              return false;
+            if (node.nodeType !== Node.ELEMENT_NODE) return false;
             const el = node;
             return el.id === "SpicyLyricsPage" || el.classList?.contains("Cinema--Container") || el.classList?.contains("spicy-lyrics-cinema") || el.classList?.contains("spicy-pip-wrapper") || !!el.querySelector("#SpicyLyricsPage") || !!el.querySelector(".Cinema--Container") || !!el.querySelector(".spicy-pip-wrapper");
           };
@@ -1471,8 +2060,7 @@ var SpicyLyricTranslater = (() => {
   }
   function setupPIPObserver() {
     const docPiP = globalThis.documentPictureInPicture;
-    if (!docPiP)
-      return;
+    if (!docPiP) return;
     docPiP.addEventListener("enter", (event) => {
       console.log("[SpicyLyricTranslater] PIP window opened");
       const pipWindow = event.window;
@@ -1498,8 +2086,7 @@ var SpicyLyricTranslater = (() => {
       return;
     }
     const pipObserver = new MutationObserver((mutations) => {
-      if (!state.isEnabled || state.isTranslating)
-        return;
+      if (!state.isEnabled || state.isTranslating) return;
       const hasNewContent = mutations.some(
         (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
           (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
@@ -1524,17 +2111,12 @@ var SpicyLyricTranslater = (() => {
       return "pip";
     }
     const page = document.querySelector("#SpicyLyricsPage");
-    if (!page)
-      return "none";
-    if (page.classList.contains("SidebarMode"))
-      return "sidebar";
-    if (page.classList.contains("ForcedCompactMode"))
-      return "compact";
-    if (document.fullscreenElement)
-      return "fullscreen";
+    if (!page) return "none";
+    if (page.classList.contains("SidebarMode")) return "sidebar";
+    if (page.classList.contains("ForcedCompactMode")) return "compact";
+    if (document.fullscreenElement) return "fullscreen";
     const isInFullscreenContainer = !!document.querySelector(".Cinema--Container #SpicyLyricsPage");
-    if (isInFullscreenContainer)
-      return "cinema";
+    if (isInFullscreenContainer) return "cinema";
     return "normal";
   }
   function setupViewModeObserver() {
@@ -1557,6 +2139,17 @@ var SpicyLyricTranslater = (() => {
       state.lastViewMode = currentMode;
     }, 1e3);
   }
+  function setupKeyboardShortcut() {
+    document.addEventListener("keydown", (e) => {
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isSpicyLyricsOpen()) {
+          handleTranslateToggle();
+        }
+      }
+    });
+  }
   async function initialize() {
     while (typeof Spicetify === "undefined" || !Spicetify.Platform) {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1571,6 +2164,8 @@ var SpicyLyricTranslater = (() => {
     setPreferredApi(state.preferredApi, state.customApiUrl);
     injectStyles();
     registerSettingsMenu();
+    startUpdateChecker(30 * 60 * 1e3);
+    setupKeyboardShortcut();
     setupPageObserver();
     setupViewModeObserver();
     if (Spicetify.Platform?.History?.listen) {
@@ -1610,14 +2205,26 @@ var SpicyLyricTranslater = (() => {
       storage.set("translation-enabled", "false");
       removeTranslations();
     },
+    toggle: () => {
+      if (isSpicyLyricsOpen()) {
+        handleTranslateToggle();
+      }
+    },
     setLanguage: (lang) => {
       state.targetLanguage = lang;
       storage.set("target-language", lang);
     },
     translate: translateCurrentLyrics,
     showSettings: showSettingsModal,
+    showCacheViewer: showCacheViewerModal,
     clearCache: clearTranslationCache,
-    getState: () => ({ ...state })
+    getCacheStats,
+    getCachedTranslations,
+    deleteCachedTranslation,
+    getState: () => ({ ...state }),
+    checkForUpdates: () => checkForUpdates(true),
+    getUpdateInfo,
+    version: VERSION
   };
   initialize().catch(console.error);
   var app_default = initialize;

@@ -10,6 +10,7 @@ import { Icons } from './utils/icons';
 import { storage } from './utils/storage';
 import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
 import { injectStyles } from './styles/main';
+import { checkForUpdates, startUpdateChecker, getUpdateInfo, getCurrentVersion, VERSION, REPO_URL } from './utils/updater';
 
 // Extension state
 interface ExtensionState {
@@ -842,6 +843,13 @@ function showSettingsModal(): void {
                 <button id="spicy-translate-clear-cache">Clear All</button>
             </div>
         </div>
+        <div class="setting-item">
+            <div>
+                <div class="setting-label">Version</div>
+                <div class="setting-description">v${VERSION} • <a href="${REPO_URL}" target="_blank" style="color: var(--spice-button-active);">View on GitHub</a></div>
+            </div>
+            <button id="spicy-translate-check-updates">Check for Updates</button>
+        </div>
         <div class="setting-item" style="border-bottom: none; opacity: 0.7; font-size: 12px;">
             <div>
                 <div class="setting-description">Keyboard shortcut: Alt+T to toggle translation</div>
@@ -925,6 +933,33 @@ function showSettingsModal(): void {
                 // Close and reopen to refresh cache count
                 Spicetify.PopupModal.hide();
                 setTimeout(() => showSettingsModal(), 100);
+            });
+        }
+        
+        const checkUpdatesBtn = document.getElementById('spicy-translate-check-updates');
+        if (checkUpdatesBtn) {
+            checkUpdatesBtn.addEventListener('click', async () => {
+                checkUpdatesBtn.textContent = 'Checking...';
+                checkUpdatesBtn.setAttribute('disabled', 'true');
+                try {
+                    const info = await getUpdateInfo();
+                    if (info?.hasUpdate) {
+                        Spicetify.PopupModal.hide();
+                        setTimeout(() => checkForUpdates(true), 150);
+                    } else {
+                        if (Spicetify.showNotification) {
+                            Spicetify.showNotification('You\'re on the latest version!');
+                        }
+                        checkUpdatesBtn.textContent = 'Check for Updates';
+                        checkUpdatesBtn.removeAttribute('disabled');
+                    }
+                } catch (error) {
+                    checkUpdatesBtn.textContent = 'Check for Updates';
+                    checkUpdatesBtn.removeAttribute('disabled');
+                    if (Spicetify.showNotification) {
+                        Spicetify.showNotification('Failed to check for updates', true);
+                    }
+                }
             });
         }
     }, 100);
@@ -1497,6 +1532,9 @@ async function initialize(): Promise<void> {
     // Register settings menu
     registerSettingsMenu();
     
+    // Start auto-update checker (checks every 30 minutes)
+    startUpdateChecker(30 * 60 * 1000);
+    
     // Setup keyboard shortcut (Ctrl+Shift+T to toggle translation)
     setupKeyboardShortcut();
     
@@ -1572,7 +1610,10 @@ window.SpicyLyricTranslater = {
     getCacheStats: getCacheStats,
     getCachedTranslations: getCachedTranslations,
     deleteCachedTranslation: deleteCachedTranslation,
-    getState: () => ({ ...state })
+    getState: () => ({ ...state }),
+    checkForUpdates: () => checkForUpdates(true),
+    getUpdateInfo: getUpdateInfo,
+    version: VERSION
 };
 
 // Start initialization

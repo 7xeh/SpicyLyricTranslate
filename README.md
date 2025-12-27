@@ -8,11 +8,14 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 ## Features
 
 - 🌍 **Translate Button** - Adds a translation toggle to the Spicy Lyrics view controls bar (next to romanize, fullscreen, etc.)
-- 🔄 **20+ Languages** - Supports English, Spanish, French, German, Japanese, Korean, Chinese, and many more
+- 🔄 **100+ Languages** - Supports English, Spanish, French, German, Japanese, Korean, Chinese, and many more
 - 🧠 **Smart Detection** - Automatically skips translation if lyrics are already in your target language
 - 💾 **Caching** - Caches translations for 7 days to reduce API calls and improve performance
+- 📦 **Cache Viewer** - View, manage, and delete individual cached translations
 - ⚙️ **Customizable** - Right-click the translate button to access settings
 - 🔁 **Auto-Translate** - Optionally translate when lyrics load
+- 🔔 **Auto-Updater** - Automatically checks for updates and notifies you when a new version is available
+- ⌨️ **Keyboard Shortcuts** - Press Alt+T to toggle translation quickly
 
 ## Preview
 
@@ -73,10 +76,17 @@ This script automates installation and setup.
 
 ### Settings
 
-- **Target Language** – Choose your preferred output language  
-- **Show Original** – Display original lyrics alongside translated ones  
-- **Auto-Translate** – Automatically translate on lyric load  
-- **Clear Cache** – Remove stored translations  
+- **Target Language** – Choose your preferred output language (100+ languages)
+- **Preferred API** – Select Google Translate, LibreTranslate, or a custom API
+- **Custom API URL** – Enter your own translation API endpoint
+- **Auto-Translate** – Automatically translate on lyric load
+- **Show Notifications** – Toggle translation status notifications
+- **Translation Cache** – View cache stats, browse cached entries, or clear all
+- **Check for Updates** – Manually check for new versions
+
+### Keyboard Shortcuts
+
+- **Alt+T** – Toggle translation on/off  
 
 ## Supported Languages
 

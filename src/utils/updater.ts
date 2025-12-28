@@ -4,7 +4,7 @@
  */
 
 // Version info from manifest
-const CURRENT_VERSION = '1.4.1';
+const CURRENT_VERSION = '1.4.2';
 const GITHUB_REPO = '7xeh/SpicyLyricTranslate';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;

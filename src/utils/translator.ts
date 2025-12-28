@@ -17,6 +17,7 @@ export interface TranslationCache {
     [key: string]: {
         translation: string;
         timestamp: number;
+        api?: string;
     };
 }
 
@@ -244,13 +245,14 @@ function getCachedTranslation(text: string, targetLang: string): string | null {
 /**
  * Cache a translation
  */
-function cacheTranslation(text: string, targetLang: string, translation: string): void {
+function cacheTranslation(text: string, targetLang: string, translation: string, api?: string): void {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const key = `${targetLang}:${text}`;
     
     cache[key] = {
         translation,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        api
     };
     
     // Limit cache size
@@ -455,21 +457,21 @@ export async function translateText(text: string, targetLang: string): Promise<T
     
     // Order APIs based on preference
     let primaryApi: () => Promise<{ translation: string; detectedLang?: string }>;
-    let fallbackApis: (() => Promise<{ translation: string; detectedLang?: string }>)[] = [];
+    let fallbackApis: { name: string, fn: () => Promise<{ translation: string; detectedLang?: string }> }[] = [];
     
     switch (preferredApi) {
         case 'libretranslate':
             primaryApi = tryLibreTranslate;
-            fallbackApis = [tryGoogle];
+            fallbackApis = [{ name: 'google', fn: tryGoogle }];
             break;
         case 'custom':
             primaryApi = tryCustom;
-            fallbackApis = [tryGoogle, tryLibreTranslate];
+            fallbackApis = [{ name: 'google', fn: tryGoogle }, { name: 'libretranslate', fn: tryLibreTranslate }];
             break;
         case 'google':
         default:
             primaryApi = tryGoogle;
-            fallbackApis = [tryLibreTranslate];
+            fallbackApis = [{ name: 'libretranslate', fn: tryLibreTranslate }];
             break;
     }
     
@@ -479,7 +481,7 @@ export async function translateText(text: string, targetLang: string): Promise<T
         
         // Skip if source language is same as target
         if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-            cacheTranslation(text, targetLang, text);
+            cacheTranslation(text, targetLang, text, preferredApi);
             return {
                 originalText: text,
                 translatedText: text,
@@ -489,7 +491,7 @@ export async function translateText(text: string, targetLang: string): Promise<T
             };
         }
         
-        cacheTranslation(text, targetLang, result.translation);
+        cacheTranslation(text, targetLang, result.translation, preferredApi);
         return {
             originalText: text,
             translatedText: result.translation,
@@ -503,10 +505,10 @@ export async function translateText(text: string, targetLang: string): Promise<T
         // Try fallback APIs
         for (const fallbackApi of fallbackApis) {
             try {
-                const result = await fallbackApi();
+                const result = await fallbackApi.fn();
                 
                 if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-                    cacheTranslation(text, targetLang, text);
+                    cacheTranslation(text, targetLang, text, fallbackApi.name);
                     return {
                         originalText: text,
                         translatedText: text,
@@ -516,7 +518,7 @@ export async function translateText(text: string, targetLang: string): Promise<T
                     };
                 }
                 
-                cacheTranslation(text, targetLang, result.translation);
+                cacheTranslation(text, targetLang, result.translation, fallbackApi.name);
                 return {
                     originalText: text,
                     translatedText: result.translation,
@@ -525,7 +527,7 @@ export async function translateText(text: string, targetLang: string): Promise<T
                     wasTranslated: true
                 };
             } catch (fallbackError) {
-                console.warn('[SpicyLyricTranslater] Fallback API failed:', fallbackError);
+                console.warn(`[SpicyLyricTranslater] Fallback API (${fallbackApi.name}) failed:`, fallbackError);
                 continue;
             }
         }
@@ -652,9 +654,9 @@ export function getCacheStats(): { entries: number; oldestTimestamp: number | nu
 /**
  * Get all cached translations for viewing
  */
-export function getCachedTranslations(): Array<{ original: string; translated: string; language: string; date: Date }> {
+export function getCachedTranslations(): Array<{ original: string; translated: string; language: string; date: Date; api?: string }> {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
-    const entries: Array<{ original: string; translated: string; language: string; date: Date }> = [];
+    const entries: Array<{ original: string; translated: string; language: string; date: Date; api?: string }> = [];
     
     for (const key of Object.keys(cache)) {
         const [lang, ...textParts] = key.split(':');
@@ -663,7 +665,8 @@ export function getCachedTranslations(): Array<{ original: string; translated: s
             original,
             translated: cache[key].translation,
             language: lang,
-            date: new Date(cache[key].timestamp)
+            date: new Date(cache[key].timestamp),
+            api: cache[key].api
         });
     }
     

@@ -1000,7 +1000,7 @@ function showCacheViewerModal(): void {
             <div class="cache-item" data-index="${index}" style="padding: 8px 0; border-bottom: 1px solid var(--spice-misc, #535353);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} • ${item.date.toLocaleDateString()}</div>
+                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} • ${item.api ? item.api.toUpperCase() + ' • ' : ''}${item.date.toLocaleDateString()}</div>
                         <div style="font-size: 13px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.original}">${truncateText(item.original, 40)}</div>
                         <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.translated}">${truncateText(item.translated, 40)}</div>
                     </div>

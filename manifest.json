@@ -1,11 +1,17 @@
-{
-  "name": "Spicy Lyric Translater",
-  "description": "A Spicetify extension that adds real-time translation to Spicy Lyrics.",
-  "authors": [{ "name": "7xeh", "url": "https://github.com/7xeh" }],
-  "main": "./builds/spicy-lyric-translater.js",
-  "preview": "./preview.png",
-  "readme": "README.md",
-  "tags": [
+[
+  {
+    "name": "Spicy Lyric Translater",
+    "description": "A Spicetify extension that adds real-time translation to Spicy Lyrics.",
+    "preview": "preview.png",
+    "main": "builds/spicy-lyric-translater.js",
+    "readme": "README.md",
+    "authors": [
+        {
+            "name": "7xeh",
+            "url": "https://github.com/7xeh"
+        }
+    ],
+    "tags": [
       "lyrics",
       "spicy-lyrics",
       "lyric-translation",
@@ -14,4 +20,5 @@
       "lyrics-in-english",
       "multilingual-lyrics"
     ]
-}
+  }
+]

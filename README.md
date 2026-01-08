@@ -34,7 +34,7 @@ A Spicetify extension that adds real-time translation to [Spicy Lyrics](https://
 
 Download and run the official installer script:
 
-[Install Spicy Lyric Translater — Installer Script](https://github.com/7xeh/SpicyLyricTranslate/releases/download/v1.3/Install.Spicetify.+.SpicyTranslate.cmd)
+[Install Spicy Lyric Translater — Installer Script](https://github.com/7xeh/SpicyLyricTranslate/releases/download/v1.4.1/Install.Spicetify.+.SpicyTranslate.cmd)
 
 This script automates installation and setup.
 

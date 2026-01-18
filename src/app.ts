@@ -2,8 +2,8 @@
  * Spicy Lyric Translater
  * A Spicetify extension that adds translation functionality to Spicy Lyrics
  * 
- * @author Your Name
- * @version 1.0.0
+ * @author 7xeh
+ * @version 1.4.3
  */
 
 import { Icons } from './utils/icons';
@@ -297,6 +297,7 @@ function restoreButtonState(): void {
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (button) {
         button.classList.remove('loading');
+        button.classList.remove('error');
         button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
     }
     
@@ -306,7 +307,26 @@ function restoreButtonState(): void {
         const pipButton = pipWindow.document.querySelector('#TranslateToggle') as HTMLButtonElement;
         if (pipButton) {
             pipButton.classList.remove('loading');
+            pipButton.classList.remove('error');
             pipButton.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+        }
+    }
+}
+
+/**
+ * Set button to error state for visual feedback on translation failure
+ */
+function setButtonErrorState(hasError: boolean): void {
+    const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
+    if (button) {
+        button.classList.toggle('error', hasError);
+    }
+    
+    const pipWindow = getPIPWindow();
+    if (pipWindow) {
+        const pipButton = pipWindow.document.querySelector('#TranslateToggle') as HTMLButtonElement;
+        if (pipButton) {
+            pipButton.classList.toggle('error', hasError);
         }
     }
 }
@@ -607,6 +627,12 @@ async function translateCurrentLyrics(): Promise<void> {
         if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
             Spicetify.showNotification('Translation failed. Please try again.', true);
         }
+        
+        // Set button to error state for visual feedback
+        setButtonErrorState(true);
+        
+        // Clear error state after 3 seconds
+        setTimeout(() => setButtonErrorState(false), 3000);
     } finally {
         state.isTranslating = false;
         
@@ -669,6 +695,37 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             translationSpan.className = 'spicy-translation-container spicy-translation-text';
             translationSpan.textContent = translatedText;
             line.appendChild(translationSpan);
+        }
+    });
+    
+    // Trigger scroll correction to keep the active lyric line centered
+    // This prevents the view from "jumping" when translations change line heights
+    correctLyricsScroll();
+}
+
+/**
+ * Correct scroll position after translations are applied
+ * Ensures the active/current lyric line remains visible and centered
+ */
+function correctLyricsScroll(): void {
+    requestAnimationFrame(() => {
+        // Find the active/current lyric line
+        const activeLine = document.querySelector('.LyricsContent .line.active, .LyricsContent .line.current') ||
+                           document.querySelector('.LyricsContainer .line.active, .LyricsContainer .line.current');
+        
+        if (activeLine) {
+            // Scroll the active line into view smoothly
+            activeLine.scrollIntoView({ behavior: 'auto', block: 'center' });
+        }
+        
+        // Also handle PIP window
+        const pipWindow = getPIPWindow();
+        if (pipWindow) {
+            const pipActiveLine = pipWindow.document.querySelector('.LyricsContent .line.active, .LyricsContent .line.current') ||
+                                  pipWindow.document.querySelector('.LyricsContainer .line.active, .LyricsContainer .line.current');
+            if (pipActiveLine) {
+                pipActiveLine.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }
         }
     });
 }
@@ -1322,6 +1379,10 @@ function setupPageObserver(): void {
         onSpicyLyricsOpen();
     }
     
+    // Try to scope observer to a more specific container for better performance
+    const mainView = document.querySelector('.Root__main-view') || document.body;
+    const observerTarget = mainView;
+    
     // Setup observer for page changes
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -1355,10 +1416,12 @@ function setupPageObserver(): void {
         }
     });
     
-    observer.observe(document.body, {
+    observer.observe(observerTarget, {
         childList: true,
         subtree: true
     });
+    
+    console.log(`[SpicyLyricTranslater] Observer attached to ${observerTarget === document.body ? 'document.body' : '.Root__main-view'}`);
     
     // Also setup listener for PIP window changes
     setupPIPObserver();

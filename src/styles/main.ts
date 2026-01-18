@@ -22,6 +22,21 @@ export const styles = `
     color: var(--spice-button-active, #1db954);
 }
 
+/* Error state for translate button */
+#TranslateToggle.error svg {
+    color: #e74c3c;
+}
+
+#TranslateToggle.error {
+    animation: spicy-translate-shake 0.5s ease-in-out;
+}
+
+@keyframes spicy-translate-shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-3px); }
+    40%, 80% { transform: translateX(3px); }
+}
+
 /* Settings modal styles - these are in our own modal */
 .spicy-translate-settings {
     padding: 16px;

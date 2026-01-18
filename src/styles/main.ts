@@ -225,6 +225,8 @@ export const styles = `
     display: flex;
     align-items: center;
     margin-right: 8px;
+    position: relative;
+    z-index: 100;
 }
 
 .slt-ci-button {
@@ -236,14 +238,13 @@ export const styles = `
     background: transparent;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-    max-width: 24px;
+    overflow: visible;
+    white-space: nowrap;
 }
 
 .slt-ci-button:hover {
     background: rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    max-width: 180px;
     padding: 6px 10px;
     gap: 8px;
 }
@@ -298,7 +299,7 @@ export const styles = `
     display: flex;
     align-items: center;
     opacity: 0;
-    max-width: 0;
+    width: 0;
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
@@ -306,7 +307,8 @@ export const styles = `
 
 .slt-ci-button:hover .slt-ci-expanded {
     opacity: 1;
-    max-width: 160px;
+    width: auto;
+    margin-left: 8px;
 }
 
 .slt-ci-stats-row {

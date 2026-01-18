@@ -916,6 +916,8 @@ var SpicyLyricTranslater = (() => {
     display: flex;
     align-items: center;
     margin-right: 8px;
+    position: relative;
+    z-index: 100;
 }
 
 .slt-ci-button {
@@ -927,14 +929,13 @@ var SpicyLyricTranslater = (() => {
     background: transparent;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-    max-width: 24px;
+    overflow: visible;
+    white-space: nowrap;
 }
 
 .slt-ci-button:hover {
     background: rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    max-width: 180px;
     padding: 6px 10px;
     gap: 8px;
 }
@@ -989,7 +990,7 @@ var SpicyLyricTranslater = (() => {
     display: flex;
     align-items: center;
     opacity: 0;
-    max-width: 0;
+    width: 0;
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
@@ -997,7 +998,8 @@ var SpicyLyricTranslater = (() => {
 
 .slt-ci-button:hover .slt-ci-expanded {
     opacity: 1;
-    max-width: 160px;
+    width: auto;
+    margin-left: 8px;
 }
 
 .slt-ci-stats-row {
@@ -1054,7 +1056,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.10" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.5.0" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;

@@ -212,118 +212,15 @@ function getExtensionDownloadUrl(release: GitHubRelease): string | null {
 }
 
 /**
- * Download the extension file
- */
-async function downloadExtension(url: string): Promise<string | null> {
-    try {
-        updateState.status = 'Downloading...';
-        updateState.progress = 10;
-        
-        // Try self-hosted API download endpoint first (guaranteed CORS support)
-        let response: Response | null = null;
-        
-        // Use the API download endpoint for CORS compatibility
-        const apiDownloadUrl = `${UPDATE_API_URL}?action=latest&_=${Date.now()}`;
-        
-        try {
-            response = await fetch(apiDownloadUrl, {
-                mode: 'cors',
-                cache: 'no-store'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API download failed: ${response.status}`);
-            }
-            
-            console.log('[SpicyLyricTranslater] Downloaded from self-hosted API');
-        } catch (apiError) {
-            console.warn('[SpicyLyricTranslater] API download failed, trying direct URL:', apiError);
-            
-            // Fallback to direct URL
-            response = await fetch(url, {
-                mode: 'cors',
-                cache: 'no-store'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Direct download failed: ${response.status}`);
-            }
-        }
-        
-        updateState.progress = 50;
-        const content = await response.text();
-        updateState.progress = 80;
-        
-        return content;
-    } catch (error) {
-        console.error('[SpicyLyricTranslater] Download failed:', error);
-        return null;
-    }
-}
-
-/**
- * Trigger a browser download of the extension file
- */
-function triggerFileDownload(content: string, filename: string): void {
-    const blob = new Blob([content], { type: 'application/javascript' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-/**
- * Get the Spicetify extensions directory path based on OS
- */
-function getExtensionsPath(): string {
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes('win')) {
-        return '%APPDATA%\\spicetify\\Extensions\\';
-    } else if (platform.includes('mac')) {
-        return '~/.config/spicetify/Extensions/';
-    } else {
-        return '~/.config/spicetify/Extensions/';
-    }
-}
-
-/**
- * Install the extension update by triggering download and showing instructions
- */
-async function installUpdate(content: string, version: string): Promise<boolean> {
-    try {
-        updateState.status = 'Preparing download...';
-        updateState.progress = 90;
-        
-        // Trigger the file download
-        triggerFileDownload(content, EXTENSION_FILENAME);
-        
-        // Save the version for tracking
-        storage.set('pending-update-version', version);
-        storage.set('pending-update-timestamp', Date.now().toString());
-        
-        updateState.progress = 100;
-        updateState.status = 'Download started!';
-        
-        return true;
-    } catch (error) {
-        console.error('[SpicyLyricTranslater] Installation failed:', error);
-        return false;
-    }
-}
-
-/**
- * Perform the actual update - download, install, and prompt for reload
+ * Perform the automatic update - simply reload Spotify to load the new version
+ * The loader will automatically fetch and load the latest version on reload
  */
 async function performUpdate(release: GitHubRelease, version: VersionInfo, modalContent: HTMLElement): Promise<void> {
     if (updateState.isUpdating) return;
     
     updateState.isUpdating = true;
     updateState.progress = 0;
-    updateState.status = 'Starting update...';
+    updateState.status = 'Preparing update...';
     
     const progressContainer = modalContent.querySelector('.update-progress');
     const progressBar = modalContent.querySelector('.progress-bar-fill') as HTMLElement;
@@ -347,79 +244,35 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
     };
     
     try {
-        // Get download URL
-        const downloadUrl = getExtensionDownloadUrl(release);
+        // Save the pending update version for tracking
+        storage.set('pending-update-version', version.text);
+        storage.set('pending-update-timestamp', Date.now().toString());
         
-        if (!downloadUrl) {
-            throw new Error('No download URL found in release');
-        }
-        
+        updateState.progress = 30;
+        updateState.status = 'Preparing to update...';
         updateProgress();
         
-        // Download the extension
-        const content = await downloadExtension(downloadUrl);
+        await new Promise(r => setTimeout(r, 500));
         
-        if (!content) {
-            throw new Error('Download failed');
-        }
-        
+        updateState.progress = 60;
+        updateState.status = 'Ready to reload...';
         updateProgress();
         
-        // Install the update
-        const installed = await installUpdate(content, version.text);
+        await new Promise(r => setTimeout(r, 500));
         
-        if (!installed) {
-            throw new Error('Installation failed');
-        }
-        
+        updateState.progress = 100;
+        updateState.status = 'Reloading Spotify...';
         updateProgress();
         
-        // Show success message with instructions
-        if (progressContainer && buttonsContainer) {
-            const extensionsPath = getExtensionsPath();
-            (progressContainer as HTMLElement).innerHTML = `
-                <div class="update-success">
-                    <span class="success-icon">✅</span>
-                    <span class="success-text">Update downloaded!</span>
-                </div>
-                <div class="update-instructions">
-                    <p><strong>To complete the update:</strong></p>
-                    <ol>
-                        <li>Move the downloaded file to:<br><code>${extensionsPath}</code></li>
-                        <li>Replace the existing file if prompted</li>
-                        <li>Run <code>spicetify apply</code> in your terminal</li>
-                        <li>Restart Spotify</li>
-                    </ol>
-                </div>
-            `;
-            
-            (buttonsContainer as HTMLElement).style.display = 'flex';
-            (buttonsContainer as HTMLElement).innerHTML = `
-                <button class="update-btn secondary" id="slt-copy-path">Copy Path</button>
-                <button class="update-btn primary" id="slt-update-done">Done</button>
-            `;
-            
-            // Add new event listeners
-            setTimeout(() => {
-                const copyBtn = document.getElementById('slt-copy-path');
-                const doneBtn = document.getElementById('slt-update-done');
-                
-                if (copyBtn) {
-                    copyBtn.addEventListener('click', () => {
-                        navigator.clipboard.writeText(extensionsPath.replace(/%APPDATA%/g, '').replace(/~/g, ''));
-                        if (Spicetify.showNotification) {
-                            Spicetify.showNotification('Path copied to clipboard!');
-                        }
-                    });
-                }
-                
-                if (doneBtn) {
-                    doneBtn.addEventListener('click', () => {
-                        Spicetify.PopupModal.hide();
-                    });
-                }
-            }, 100);
+        await new Promise(r => setTimeout(r, 300));
+        
+        // Clear metadata so the loader fetches fresh version
+        if ((window as any)._spicy_lyric_translater_metadata) {
+            (window as any)._spicy_lyric_translater_metadata = {};
         }
+        
+        // Reload Spotify to load the new version
+        window.location.reload();
         
     } catch (error) {
         console.error('[SpicyLyricTranslater] Update failed:', error);
@@ -432,35 +285,35 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
             (progressContainer as HTMLElement).innerHTML = `
                 <div class="update-error">
                     <span class="error-icon">❌</span>
-                    <span class="error-text">Update failed. Please try manual download.</span>
+                    <span class="error-text">Update failed. Please try restarting Spotify.</span>
                 </div>
             `;
             
             (buttonsContainer as HTMLElement).style.display = 'flex';
             (buttonsContainer as HTMLElement).innerHTML = `
                 <button class="update-btn secondary" id="slt-update-cancel">Cancel</button>
-                <button class="update-btn primary" id="slt-manual-download">Download Manually</button>
+                <button class="update-btn primary" id="slt-reload-now">Reload Now</button>
             `;
             
             setTimeout(() => {
                 const cancelBtn = document.getElementById('slt-update-cancel');
-                const manualBtn = document.getElementById('slt-manual-download');
+                const reloadBtn = document.getElementById('slt-reload-now');
                 
                 if (cancelBtn) {
                     cancelBtn.addEventListener('click', () => {
                         Spicetify.PopupModal.hide();
+                        updateState.isUpdating = false;
                     });
                 }
                 
-                if (manualBtn) {
-                    manualBtn.addEventListener('click', () => {
-                        window.open(release.html_url, '_blank');
-                        Spicetify.PopupModal.hide();
+                if (reloadBtn) {
+                    reloadBtn.addEventListener('click', () => {
+                        window.location.reload();
                     });
                 }
             }, 100);
         }
-    } finally {
+        
         updateState.isUpdating = false;
     }
 }

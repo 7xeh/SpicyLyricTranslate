@@ -1158,95 +1158,12 @@ var SpicyLyricTranslater = (() => {
       return null;
     }
   }
-  function getExtensionDownloadUrl(release) {
-    if (!release.assets || release.assets.length === 0) {
-      return null;
-    }
-    const jsAsset = release.assets.find(
-      (asset) => asset.name.endsWith(".js") && (asset.name.includes("spicy-lyric-translater") || asset.name.includes("spicylyrictranslate"))
-    );
-    if (jsAsset) {
-      return jsAsset.browser_download_url;
-    }
-    const anyJs = release.assets.find((asset) => asset.name.endsWith(".js"));
-    return anyJs ? anyJs.browser_download_url : null;
-  }
-  async function downloadExtension(url) {
-    try {
-      updateState.status = "Downloading...";
-      updateState.progress = 10;
-      let response = null;
-      const apiDownloadUrl = `${UPDATE_API_URL}?action=latest&_=${Date.now()}`;
-      try {
-        response = await fetch(apiDownloadUrl, {
-          mode: "cors",
-          cache: "no-store"
-        });
-        if (!response.ok) {
-          throw new Error(`API download failed: ${response.status}`);
-        }
-        console.log("[SpicyLyricTranslater] Downloaded from self-hosted API");
-      } catch (apiError) {
-        console.warn("[SpicyLyricTranslater] API download failed, trying direct URL:", apiError);
-        response = await fetch(url, {
-          mode: "cors",
-          cache: "no-store"
-        });
-        if (!response.ok) {
-          throw new Error(`Direct download failed: ${response.status}`);
-        }
-      }
-      updateState.progress = 50;
-      const content = await response.text();
-      updateState.progress = 80;
-      return content;
-    } catch (error) {
-      console.error("[SpicyLyricTranslater] Download failed:", error);
-      return null;
-    }
-  }
-  function triggerFileDownload(content, filename) {
-    const blob = new Blob([content], { type: "application/javascript" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-  function getExtensionsPath() {
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes("win")) {
-      return "%APPDATA%\\spicetify\\Extensions\\";
-    } else if (platform.includes("mac")) {
-      return "~/.config/spicetify/Extensions/";
-    } else {
-      return "~/.config/spicetify/Extensions/";
-    }
-  }
-  async function installUpdate(content, version) {
-    try {
-      updateState.status = "Preparing download...";
-      updateState.progress = 90;
-      triggerFileDownload(content, EXTENSION_FILENAME);
-      storage.set("pending-update-version", version);
-      storage.set("pending-update-timestamp", Date.now().toString());
-      updateState.progress = 100;
-      updateState.status = "Download started!";
-      return true;
-    } catch (error) {
-      console.error("[SpicyLyricTranslater] Installation failed:", error);
-      return false;
-    }
-  }
   async function performUpdate(release, version, modalContent) {
     if (updateState.isUpdating)
       return;
     updateState.isUpdating = true;
     updateState.progress = 0;
-    updateState.status = "Starting update...";
+    updateState.status = "Preparing update...";
     const progressContainer = modalContent.querySelector(".update-progress");
     const progressBar = modalContent.querySelector(".progress-bar-fill");
     const progressText = modalContent.querySelector(".progress-text");
@@ -1266,61 +1183,24 @@ var SpicyLyricTranslater = (() => {
       }
     };
     try {
-      const downloadUrl = getExtensionDownloadUrl(release);
-      if (!downloadUrl) {
-        throw new Error("No download URL found in release");
-      }
+      storage.set("pending-update-version", version.text);
+      storage.set("pending-update-timestamp", Date.now().toString());
+      updateState.progress = 30;
+      updateState.status = "Preparing to update...";
       updateProgress();
-      const content = await downloadExtension(downloadUrl);
-      if (!content) {
-        throw new Error("Download failed");
-      }
+      await new Promise((r) => setTimeout(r, 500));
+      updateState.progress = 60;
+      updateState.status = "Ready to reload...";
       updateProgress();
-      const installed = await installUpdate(content, version.text);
-      if (!installed) {
-        throw new Error("Installation failed");
-      }
+      await new Promise((r) => setTimeout(r, 500));
+      updateState.progress = 100;
+      updateState.status = "Reloading Spotify...";
       updateProgress();
-      if (progressContainer && buttonsContainer) {
-        const extensionsPath = getExtensionsPath();
-        progressContainer.innerHTML = `
-                <div class="update-success">
-                    <span class="success-icon">\u2705</span>
-                    <span class="success-text">Update downloaded!</span>
-                </div>
-                <div class="update-instructions">
-                    <p><strong>To complete the update:</strong></p>
-                    <ol>
-                        <li>Move the downloaded file to:<br><code>${extensionsPath}</code></li>
-                        <li>Replace the existing file if prompted</li>
-                        <li>Run <code>spicetify apply</code> in your terminal</li>
-                        <li>Restart Spotify</li>
-                    </ol>
-                </div>
-            `;
-        buttonsContainer.style.display = "flex";
-        buttonsContainer.innerHTML = `
-                <button class="update-btn secondary" id="slt-copy-path">Copy Path</button>
-                <button class="update-btn primary" id="slt-update-done">Done</button>
-            `;
-        setTimeout(() => {
-          const copyBtn = document.getElementById("slt-copy-path");
-          const doneBtn = document.getElementById("slt-update-done");
-          if (copyBtn) {
-            copyBtn.addEventListener("click", () => {
-              navigator.clipboard.writeText(extensionsPath.replace(/%APPDATA%/g, "").replace(/~/g, ""));
-              if (Spicetify.showNotification) {
-                Spicetify.showNotification("Path copied to clipboard!");
-              }
-            });
-          }
-          if (doneBtn) {
-            doneBtn.addEventListener("click", () => {
-              Spicetify.PopupModal.hide();
-            });
-          }
-        }, 100);
+      await new Promise((r) => setTimeout(r, 300));
+      if (window._spicy_lyric_translater_metadata) {
+        window._spicy_lyric_translater_metadata = {};
       }
+      window.location.reload();
     } catch (error) {
       console.error("[SpicyLyricTranslater] Update failed:", error);
       updateState.status = "Update failed";
@@ -1329,31 +1209,30 @@ var SpicyLyricTranslater = (() => {
         progressContainer.innerHTML = `
                 <div class="update-error">
                     <span class="error-icon">\u274C</span>
-                    <span class="error-text">Update failed. Please try manual download.</span>
+                    <span class="error-text">Update failed. Please try restarting Spotify.</span>
                 </div>
             `;
         buttonsContainer.style.display = "flex";
         buttonsContainer.innerHTML = `
                 <button class="update-btn secondary" id="slt-update-cancel">Cancel</button>
-                <button class="update-btn primary" id="slt-manual-download">Download Manually</button>
+                <button class="update-btn primary" id="slt-reload-now">Reload Now</button>
             `;
         setTimeout(() => {
           const cancelBtn = document.getElementById("slt-update-cancel");
-          const manualBtn = document.getElementById("slt-manual-download");
+          const reloadBtn = document.getElementById("slt-reload-now");
           if (cancelBtn) {
             cancelBtn.addEventListener("click", () => {
               Spicetify.PopupModal.hide();
+              updateState.isUpdating = false;
             });
           }
-          if (manualBtn) {
-            manualBtn.addEventListener("click", () => {
-              window.open(release.html_url, "_blank");
-              Spicetify.PopupModal.hide();
+          if (reloadBtn) {
+            reloadBtn.addEventListener("click", () => {
+              window.location.reload();
             });
           }
         }, 100);
       }
-    } finally {
       updateState.isUpdating = false;
     }
   }

@@ -1,6 +1,6 @@
 /**
  * Auto-updater for Spicy Lyric Translater
- * Checks GitHub releases for new versions and auto-installs updates
+ * Uses loader pattern - extension is loaded from CDN, updates just require a reload
  * 
  * @author 7xeh
  */
@@ -10,8 +10,23 @@ import { storage } from './storage';
 // Declare the build-time injected version constant
 declare const __VERSION__: string;
 
+// Check if we're running via the loader (CDN) or locally installed
+const isLoaderMode = (): boolean => {
+    const metadata = (window as any)._spicy_lyric_translater_metadata;
+    return metadata?.IsLoader === true;
+};
+
+// Get version from loader metadata if available, otherwise use build-time version
+const getLoadedVersion = (): string => {
+    const metadata = (window as any)._spicy_lyric_translater_metadata;
+    if (metadata?.LoadedVersion) {
+        return metadata.LoadedVersion;
+    }
+    return typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
+};
+
 // Version info - automatically injected at build time from package.json
-const CURRENT_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
+const CURRENT_VERSION = getLoadedVersion();
 const GITHUB_REPO = '7xeh/SpicyLyricTranslate';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;

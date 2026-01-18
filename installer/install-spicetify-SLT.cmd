@@ -75,13 +75,13 @@ set "PS_SCRIPT=%TEMP%\spicetify_plugin_install.ps1"
     echo $ErrorActionPreference = 'Stop'
     echo $filename = "spicy-lyric-translater.js"
     echo $extDir = "$env:APPDATA\spicetify\Extensions"
-    echo $downloadUrl = "https://7xeh.dev/apps/spicylyrictranslate/releases/latest/spicy-lyric-translater.js"
+    echo $downloadUrl = "https://7xeh.dev/apps/spicylyrictranslate/api/version.php?action=loader"
     echo.
     echo # Create dir if missing
     echo if ^(-not ^(Test-Path $extDir^)^) { New-Item -ItemType Directory -Path $extDir -Force ^| Out-Null }
     echo.
     echo try {
-    echo     Write-Host "Downloading SpicyLyricTranslate..."
+    echo     Write-Host "Downloading SpicyLyricTranslate Loader..."
     echo     Invoke-WebRequest -Uri $downloadUrl -OutFile "$extDir\$filename"
     echo     Write-Host "Success: Downloaded SpicyLyricTranslate."
     echo } catch {

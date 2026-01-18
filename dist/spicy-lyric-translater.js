@@ -1054,7 +1054,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.9" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.10" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -1827,25 +1827,50 @@ var SpicyLyricTranslater = (() => {
     }, LATENCY_CHECK_INTERVAL);
     jitterInterval = setInterval(applyJitter, 1e3);
   }
-  function appendToDOM() {
+  function waitForElement(selector, timeout = 1e4) {
+    return new Promise((resolve) => {
+      const element = document.querySelector(selector);
+      if (element) {
+        resolve(element);
+        return;
+      }
+      const observer = new MutationObserver((mutations, obs) => {
+        const el = document.querySelector(selector);
+        if (el) {
+          obs.disconnect();
+          resolve(el);
+        }
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(document.querySelector(selector));
+      }, timeout);
+    });
+  }
+  async function appendToDOM() {
     if (containerElement && containerElement.parentNode) {
       return true;
     }
-    const topBarContentRight = document.querySelector(".main-topBar-topbarContentRight");
+    const topBarContentRight = await waitForElement(".main-topBar-topbarContentRight");
     if (topBarContentRight) {
       containerElement = createIndicatorElement();
       topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
       console.log("[SpicyLyricTranslater] Connection indicator appended to topbar content right");
       return true;
     }
-    console.log("[SpicyLyricTranslater] Could not find topbar content right container, retrying...");
+    console.log("[SpicyLyricTranslater] Could not find topbar content right container after waiting");
     return false;
   }
   async function initConnectionIndicator() {
     if (indicatorState.isInitialized)
       return;
     console.log("[SpicyLyricTranslater] Initializing connection indicator...");
-    if (!appendToDOM()) {
+    const appended = await appendToDOM();
+    if (!appended) {
       console.log("[SpicyLyricTranslater] Could not find container for connection indicator");
       return;
     }
@@ -1936,7 +1961,7 @@ var SpicyLyricTranslater = (() => {
       return text;
     return text.substring(0, maxLength - 3) + "...";
   }
-  function waitForElement(selector, timeout = 1e4) {
+  function waitForElement2(selector, timeout = 1e4) {
     return new Promise((resolve) => {
       const element = document.querySelector(selector);
       if (element) {
@@ -2730,15 +2755,15 @@ var SpicyLyricTranslater = (() => {
   async function onSpicyLyricsOpen() {
     console.log("[SpicyLyricTranslater] Lyrics view detected, initializing...");
     setViewingLyrics(true);
-    let viewControls = await waitForElement("#SpicyLyricsPage .ViewControls", 3e3);
+    let viewControls = await waitForElement2("#SpicyLyricsPage .ViewControls", 3e3);
     if (!viewControls) {
-      viewControls = await waitForElement(".spicy-pip-wrapper .ViewControls", 3e3);
+      viewControls = await waitForElement2(".spicy-pip-wrapper .ViewControls", 3e3);
     }
     if (!viewControls) {
-      viewControls = await waitForElement(".Cinema--Container .ViewControls", 3e3);
+      viewControls = await waitForElement2(".Cinema--Container .ViewControls", 3e3);
     }
     if (!viewControls) {
-      viewControls = await waitForElement(".ViewControls", 3e3);
+      viewControls = await waitForElement2(".ViewControls", 3e3);
     }
     if (!viewControls) {
       const pipWindow = getPIPWindow();

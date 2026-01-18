@@ -466,15 +466,47 @@ function getIndicatorContainer(): HTMLElement | null {
 }
 
 /**
+ * Wait for an element to appear in the DOM
+ */
+function waitForElement(selector: string, timeout: number = 10000): Promise<Element | null> {
+    return new Promise((resolve) => {
+        const element = document.querySelector(selector);
+        if (element) {
+            resolve(element);
+            return;
+        }
+
+        const observer = new MutationObserver((mutations, obs) => {
+            const el = document.querySelector(selector);
+            if (el) {
+                obs.disconnect();
+                resolve(el);
+            }
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // Timeout fallback
+        setTimeout(() => {
+            observer.disconnect();
+            resolve(document.querySelector(selector));
+        }, timeout);
+    });
+}
+
+/**
  * Append the indicator to the DOM
  */
-function appendToDOM(): boolean {
+async function appendToDOM(): Promise<boolean> {
     if (containerElement && containerElement.parentNode) {
         return true; // Already appended
     }
 
-    // Find the topbar content right container (where notification bell lives)
-    const topBarContentRight = document.querySelector('.main-topBar-topbarContentRight');
+    // Wait for the topbar content right container (where notification bell lives)
+    const topBarContentRight = await waitForElement('.main-topBar-topbarContentRight');
     if (topBarContentRight) {
         containerElement = createIndicatorElement();
         // Insert at the beginning of the container (before other buttons)
@@ -483,7 +515,7 @@ function appendToDOM(): boolean {
         return true;
     }
 
-    console.log('[SpicyLyricTranslater] Could not find topbar content right container, retrying...');
+    console.log('[SpicyLyricTranslater] Could not find topbar content right container after waiting');
     return false;
 }
 
@@ -505,8 +537,9 @@ export async function initConnectionIndicator(): Promise<void> {
     
     console.log('[SpicyLyricTranslater] Initializing connection indicator...');
     
-    // Create and append element
-    if (!appendToDOM()) {
+    // Create and append element (with retry/wait)
+    const appended = await appendToDOM();
+    if (!appended) {
         console.log('[SpicyLyricTranslater] Could not find container for connection indicator');
         return;
     }

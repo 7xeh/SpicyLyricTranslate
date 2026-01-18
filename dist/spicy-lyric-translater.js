@@ -911,11 +911,11 @@ var SpicyLyricTranslater = (() => {
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - positioned in top left */
+/* Main container - positioned in top left, after Spicy Lyrics indicator */
 .SLT_ConnectionIndicator {
     position: fixed;
-    top: 8px;
-    left: 8px;
+    top: 10px;
+    left: 280px;
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -1057,7 +1057,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.6" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.7" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -1830,35 +1830,13 @@ var SpicyLyricTranslater = (() => {
     }, LATENCY_CHECK_INTERVAL);
     jitterInterval = setInterval(applyJitter, 1e3);
   }
-  function getIndicatorContainer() {
-    const rootTop = document.querySelector(".Root__top-container");
-    if (rootTop) {
-      console.log("[SpicyLyricTranslater] Found Root__top-container for connection indicator");
-      return rootTop;
-    }
-    const globalNav = document.querySelector('[data-testid="global-nav"]');
-    if (globalNav) {
-      console.log("[SpicyLyricTranslater] Found global-nav for connection indicator");
-      return globalNav;
-    }
-    const topBar = document.querySelector(".Root__top-bar") || document.querySelector(".main-topBar-container");
-    if (topBar) {
-      console.log("[SpicyLyricTranslater] Found top-bar for connection indicator");
-      return topBar;
-    }
-    console.log("[SpicyLyricTranslater] No container found for connection indicator");
-    return null;
-  }
   function appendToDOM() {
     if (containerElement && document.body.contains(containerElement)) {
       return true;
     }
-    const targetContainer = getIndicatorContainer();
-    if (!targetContainer) {
-      return false;
-    }
     containerElement = createIndicatorElement();
-    targetContainer.appendChild(containerElement);
+    document.body.appendChild(containerElement);
+    console.log("[SpicyLyricTranslater] Connection indicator appended to body");
     return true;
   }
   async function initConnectionIndicator() {

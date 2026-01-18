@@ -473,13 +473,10 @@ function appendToDOM(): boolean {
         return true; // Already appended
     }
 
-    const targetContainer = getIndicatorContainer();
-    if (!targetContainer) {
-        return false;
-    }
-
+    // Since we use fixed positioning, we can just append to body
     containerElement = createIndicatorElement();
-    targetContainer.appendChild(containerElement);
+    document.body.appendChild(containerElement);
+    console.log('[SpicyLyricTranslater] Connection indicator appended to body');
     return true;
 }
 

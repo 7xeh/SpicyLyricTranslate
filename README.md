@@ -6,6 +6,7 @@ Real-time lyric translation for [Spicy Lyrics](https://github.com/Spikerko/spicy
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
 Discord: https://discord.gg/fXK34DeDW5
+Status: https://7xeh.dev/apps/spicylyrictranslate/status/
 
 ![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
 

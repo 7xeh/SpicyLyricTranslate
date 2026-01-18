@@ -911,11 +911,11 @@ var SpicyLyricTranslater = (() => {
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - positioned in top left, after Spicy Lyrics indicator */
+/* Main container - positioned in top right, next to notification bell */
 .SLT_ConnectionIndicator {
     position: fixed;
     top: 10px;
-    left: 280px;
+    right: 140px;
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -1057,7 +1057,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.7" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.8" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;

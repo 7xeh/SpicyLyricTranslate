@@ -220,11 +220,11 @@ export const styles = `
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - positioned in top left, after Spicy Lyrics indicator */
+/* Main container - positioned in top right, next to notification bell */
 .SLT_ConnectionIndicator {
     position: fixed;
     top: 10px;
-    left: 280px;
+    right: 140px;
     z-index: 9999;
     display: flex;
     align-items: center;

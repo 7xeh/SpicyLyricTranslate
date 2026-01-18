@@ -12,8 +12,8 @@
   },
   "homepage": "https://github.com/7xeh/SpicyLyricTranslate#readme",
   "scripts": {
-    "build": "esbuild src/app.ts --bundle --outfile=dist/spicy-lyric-translater.js --format=iife --global-name=SpicyLyricTranslater --platform=browser --target=es2020",
-    "build:watch": "esbuild src/app.ts --bundle --outfile=dist/spicy-lyric-translater.js --format=iife --global-name=SpicyLyricTranslater --platform=browser --target=es2020 --watch",
+    "build": "node build.js",
+    "build:watch": "node build.js --watch",
     "deploy": "npm run build && copy dist\\spicy-lyric-translater.js \"%APPDATA%\\spicetify\\Extensions\\\"",
     "apply": "spicetify apply",
     "release": "npm run build && copy dist\\spicy-lyric-translater.js builds\\spicy-lyric-translater.js"

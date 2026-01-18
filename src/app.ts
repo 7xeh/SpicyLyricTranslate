@@ -46,6 +46,7 @@ const state: ExtensionState = {
 let viewControlsObserver: MutationObserver | null = null;
 let lyricsObserver: MutationObserver | null = null;
 let translateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let viewModeIntervalId: ReturnType<typeof setInterval> | null = null;
 
 // Constants
 const TRANSLATION_DEBOUNCE_MS = 300;
@@ -701,14 +702,19 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             line.classList.add('spicy-translated');
             
             // Hide original content completely, show only translation
-            // Get all direct content elements (words, syllables, letterGroups, word-groups, or text nodes)
-            // This handles all Spicy Lyrics formats including custom TTML with letter-synced lyrics
-            const contentElements = line.querySelectorAll('.word, .syllable, .letterGroup, .word-group, .letter');
+            // Get all direct content elements (words, syllables, letterGroups, word-groups)
+            // IMPORTANT: Do NOT hide individual .letter elements - they are animated by Spicy Lyrics
+            // We hide the parent .letterGroup instead which contains the letters
+            const letterGroups = line.querySelectorAll('.letterGroup');
+            const otherElements = line.querySelectorAll('.word:not(.letterGroup .word), .syllable:not(.letterGroup .syllable), .word-group:not(.letterGroup .word-group)');
             
-            if (contentElements.length > 0) {
-                // Hide all content elements
-                // For TTML, we need to hide letterGroups (which contain letters) and standalone words
-                contentElements.forEach((el) => {
+            if (letterGroups.length > 0 || otherElements.length > 0) {
+                // Hide letterGroup containers (preserves internal structure for when we restore)
+                letterGroups.forEach((el) => {
+                    (el as HTMLElement).classList.add('spicy-hidden-original');
+                });
+                // Hide other standalone elements that aren't inside letterGroups
+                otherElements.forEach((el) => {
                     (el as HTMLElement).classList.add('spicy-hidden-original');
                 });
             } else {
@@ -1223,7 +1229,11 @@ function setupLyricsObserver(): void {
         
         if (hasNewContent && state.autoTranslate && !state.isTranslating) {
             // Debounce to avoid multiple rapid translations
-            setTimeout(() => {
+            if (translateDebounceTimer) {
+                clearTimeout(translateDebounceTimer);
+            }
+            translateDebounceTimer = setTimeout(() => {
+                translateDebounceTimer = null;
                 if (!state.isTranslating) {
                     // Auto-enable translation if auto-translate is on
                     if (!state.isEnabled) {
@@ -1329,6 +1339,21 @@ function injectStylesIntoPIP(): void {
 function onSpicyLyricsClose(): void {
     // Mark user as no longer actively viewing lyrics
     setViewingLyrics(false);
+    
+    // Cancel any pending debounce timer
+    if (translateDebounceTimer) {
+        clearTimeout(translateDebounceTimer);
+        translateDebounceTimer = null;
+    }
+    
+    // Cancel any ongoing translation
+    if (state.translationAbortController) {
+        state.translationAbortController.abort();
+        state.translationAbortController = null;
+    }
+    
+    // Reset translating state
+    state.isTranslating = false;
     
     if (viewControlsObserver) {
         viewControlsObserver.disconnect();
@@ -1525,7 +1550,12 @@ function setupPIPLyricsObserver(pipWindow: Window): void {
         );
         
         if (hasNewContent && !state.isTranslating) {
-            setTimeout(() => {
+            // Use the shared debounce timer
+            if (translateDebounceTimer) {
+                clearTimeout(translateDebounceTimer);
+            }
+            translateDebounceTimer = setTimeout(() => {
+                translateDebounceTimer = null;
                 if (!state.isTranslating && state.isEnabled) {
                     translateCurrentLyrics();
                 }
@@ -1566,8 +1596,14 @@ function getCurrentViewMode(): string {
  * Setup view mode change detection
  */
 function setupViewModeObserver(): void {
-    // Check view mode periodically
-    setInterval(() => {
+    // Clear any existing interval
+    if (viewModeIntervalId) {
+        clearInterval(viewModeIntervalId);
+        viewModeIntervalId = null;
+    }
+    
+    // Check view mode periodically (reduced frequency for performance)
+    viewModeIntervalId = setInterval(() => {
         const currentMode = getCurrentViewMode();
         
         if (state.lastViewMode !== null && state.lastViewMode !== currentMode && currentMode !== 'none') {
@@ -1590,7 +1626,7 @@ function setupViewModeObserver(): void {
         }
         
         state.lastViewMode = currentMode;
-    }, 1000);
+    }, 3000); // Check every 3 seconds instead of 1 second
 }
 
 /**
@@ -1670,6 +1706,22 @@ async function initialize(): Promise<void> {
     if (Spicetify.Player?.addEventListener) {
         Spicetify.Player.addEventListener('songchange', () => {
             console.log('[SpicyLyricTranslater] Song changed');
+            
+            // Cancel any pending debounce timer
+            if (translateDebounceTimer) {
+                clearTimeout(translateDebounceTimer);
+                translateDebounceTimer = null;
+            }
+            
+            // Cancel any ongoing translation
+            if (state.translationAbortController) {
+                state.translationAbortController.abort();
+                state.translationAbortController = null;
+            }
+            
+            // Reset translating state
+            state.isTranslating = false;
+            
             // Clear translations on song change
             state.translatedLyrics.clear();
             removeTranslations();

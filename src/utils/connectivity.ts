@@ -431,8 +431,8 @@ function startPeriodicChecks(): void {
         }
     }, LATENCY_CHECK_INTERVAL);
 
-    // Jitter every second for visual feedback
-    jitterInterval = setInterval(applyJitter, 1000);
+    // Jitter removed - unnecessary visual updates causing performance overhead
+    // The actual latency is updated every 10 seconds which is sufficient
 }
 
 /**

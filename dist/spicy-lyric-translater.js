@@ -1834,7 +1834,6 @@ var SpicyLyricTranslater = (() => {
         updateUI();
       }
     }, LATENCY_CHECK_INTERVAL);
-    jitterInterval = setInterval(applyJitter, 1e3);
   }
   function waitForElement(selector, timeout = 1e4) {
     return new Promise((resolve) => {
@@ -1957,6 +1956,8 @@ var SpicyLyricTranslater = (() => {
   };
   var viewControlsObserver = null;
   var lyricsObserver = null;
+  var translateDebounceTimer = null;
+  var viewModeIntervalId = null;
   function formatBytes(bytes) {
     if (bytes === 0)
       return "0 B";
@@ -2365,9 +2366,13 @@ var SpicyLyricTranslater = (() => {
         line.dataset.originalText = originalText;
         line.dataset.lineIndex = index.toString();
         line.classList.add("spicy-translated");
-        const contentElements = line.querySelectorAll(".word, .syllable, .letterGroup, .word-group, .letter");
-        if (contentElements.length > 0) {
-          contentElements.forEach((el) => {
+        const letterGroups = line.querySelectorAll(".letterGroup");
+        const otherElements = line.querySelectorAll(".word:not(.letterGroup .word), .syllable:not(.letterGroup .syllable), .word-group:not(.letterGroup .word-group)");
+        if (letterGroups.length > 0 || otherElements.length > 0) {
+          letterGroups.forEach((el) => {
+            el.classList.add("spicy-hidden-original");
+          });
+          otherElements.forEach((el) => {
             el.classList.add("spicy-hidden-original");
           });
         } else {
@@ -2766,7 +2771,11 @@ var SpicyLyricTranslater = (() => {
         )
       );
       if (hasNewContent && state.autoTranslate && !state.isTranslating) {
-        setTimeout(() => {
+        if (translateDebounceTimer) {
+          clearTimeout(translateDebounceTimer);
+        }
+        translateDebounceTimer = setTimeout(() => {
+          translateDebounceTimer = null;
           if (!state.isTranslating) {
             if (!state.isEnabled) {
               state.isEnabled = true;
@@ -2840,6 +2849,15 @@ var SpicyLyricTranslater = (() => {
   }
   function onSpicyLyricsClose() {
     setViewingLyrics(false);
+    if (translateDebounceTimer) {
+      clearTimeout(translateDebounceTimer);
+      translateDebounceTimer = null;
+    }
+    if (state.translationAbortController) {
+      state.translationAbortController.abort();
+      state.translationAbortController = null;
+    }
+    state.isTranslating = false;
     if (viewControlsObserver) {
       viewControlsObserver.disconnect();
       viewControlsObserver = null;
@@ -2974,7 +2992,11 @@ var SpicyLyricTranslater = (() => {
         )
       );
       if (hasNewContent && !state.isTranslating) {
-        setTimeout(() => {
+        if (translateDebounceTimer) {
+          clearTimeout(translateDebounceTimer);
+        }
+        translateDebounceTimer = setTimeout(() => {
+          translateDebounceTimer = null;
           if (!state.isTranslating && state.isEnabled) {
             translateCurrentLyrics();
           }
@@ -3006,7 +3028,11 @@ var SpicyLyricTranslater = (() => {
     return "normal";
   }
   function setupViewModeObserver() {
-    setInterval(() => {
+    if (viewModeIntervalId) {
+      clearInterval(viewModeIntervalId);
+      viewModeIntervalId = null;
+    }
+    viewModeIntervalId = setInterval(() => {
       const currentMode = getCurrentViewMode();
       if (state.lastViewMode !== null && state.lastViewMode !== currentMode && currentMode !== "none") {
         console.log(`[SpicyLyricTranslater] View mode changed: ${state.lastViewMode} -> ${currentMode}`);
@@ -3023,7 +3049,7 @@ var SpicyLyricTranslater = (() => {
         }, 500);
       }
       state.lastViewMode = currentMode;
-    }, 1e3);
+    }, 3e3);
   }
   function setupKeyboardShortcut() {
     document.addEventListener("keydown", (e) => {
@@ -3067,6 +3093,15 @@ var SpicyLyricTranslater = (() => {
     if (Spicetify.Player?.addEventListener) {
       Spicetify.Player.addEventListener("songchange", () => {
         console.log("[SpicyLyricTranslater] Song changed");
+        if (translateDebounceTimer) {
+          clearTimeout(translateDebounceTimer);
+          translateDebounceTimer = null;
+        }
+        if (state.translationAbortController) {
+          state.translationAbortController.abort();
+          state.translationAbortController = null;
+        }
+        state.isTranslating = false;
         state.translatedLyrics.clear();
         removeTranslations();
         if (state.autoTranslate) {

@@ -1,9 +1,6 @@
 # Dependencies
 node_modules/
 
-# Build output (dist is auto-generated, builds/ contains release)
-dist/
-
 # Logs
 *.log
 npm-debug.log*

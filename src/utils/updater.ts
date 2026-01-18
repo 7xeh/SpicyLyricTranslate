@@ -1,7 +1,11 @@
 /**
  * Auto-updater for Spicy Lyric Translater
- * Checks GitHub releases for new versions
+ * Checks GitHub releases for new versions and auto-installs updates
+ * 
+ * @author 7xeh
  */
+
+import { storage } from './storage';
 
 // Declare the build-time injected version constant
 declare const __VERSION__: string;
@@ -11,6 +15,10 @@ const CURRENT_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.
 const GITHUB_REPO = '7xeh/SpicyLyricTranslate';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
+const EXTENSION_FILENAME = 'spicy-lyric-translater.js';
+
+// Self-hosted update API
+const UPDATE_API_URL = 'https://7xeh.dev/apps/spicylyrictranslate/api/version.php';
 
 interface VersionInfo {
     major: number;
@@ -25,7 +33,27 @@ interface GitHubRelease {
     html_url: string;
     body: string;
     published_at: string;
+    assets: GitHubAsset[];
 }
+
+interface GitHubAsset {
+    name: string;
+    browser_download_url: string;
+    size: number;
+    download_count: number;
+}
+
+interface UpdateState {
+    isUpdating: boolean;
+    progress: number;
+    status: string;
+}
+
+const updateState: UpdateState = {
+    isUpdating: false,
+    progress: 0,
+    status: ''
+};
 
 let hasShownUpdateNotice = false;
 let lastCheckTime = 0;
@@ -81,9 +109,43 @@ export function getCurrentVersion(): VersionInfo {
 }
 
 /**
- * Fetch latest version from GitHub
+ * Fetch latest version from self-hosted API first, fallback to GitHub
  */
-export async function getLatestVersion(): Promise<{ version: VersionInfo; release: GitHubRelease } | null> {
+export async function getLatestVersion(): Promise<{ version: VersionInfo; release: GitHubRelease; downloadUrl: string } | null> {
+    // Try self-hosted API first
+    try {
+        const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            const version = parseVersion(data.version);
+            
+            if (version) {
+                console.log('[SpicyLyricTranslater] Got version from self-hosted API:', data.version);
+                return {
+                    version,
+                    release: {
+                        tag_name: `v${data.version}`,
+                        name: `v${data.version}`,
+                        html_url: data.release_notes_url || RELEASES_URL,
+                        body: '',
+                        published_at: new Date().toISOString(),
+                        assets: [{
+                            name: EXTENSION_FILENAME,
+                            browser_download_url: data.download_url,
+                            size: 0,
+                            download_count: 0
+                        }]
+                    },
+                    downloadUrl: data.download_url
+                };
+            }
+        }
+    } catch (error) {
+        console.warn('[SpicyLyricTranslater] Self-hosted API unavailable, trying GitHub:', error);
+    }
+    
+    // Fallback to GitHub API
     try {
         const response = await fetch(GITHUB_API_URL, {
             headers: {
@@ -104,7 +166,11 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
             return null;
         }
         
-        return { version, release };
+        // Find download URL from assets
+        const jsAsset = release.assets?.find(a => a.name.endsWith('.js'));
+        const downloadUrl = jsAsset?.browser_download_url || '';
+        
+        return { version, release, downloadUrl };
     } catch (error) {
         console.error('[SpicyLyricTranslater] Error fetching latest version:', error);
         return null;
@@ -120,6 +186,258 @@ export async function isUpdateAvailable(): Promise<boolean> {
     
     const current = getCurrentVersion();
     return compareVersions(latest.version, current) > 0;
+}
+
+/**
+ * Get the download URL for the extension JS file from a release
+ */
+function getExtensionDownloadUrl(release: GitHubRelease): string | null {
+    if (!release.assets || release.assets.length === 0) {
+        return null;
+    }
+    
+    // Look for the .js file in assets
+    const jsAsset = release.assets.find(asset => 
+        asset.name.endsWith('.js') && 
+        (asset.name.includes('spicy-lyric-translater') || asset.name.includes('spicylyrictranslate'))
+    );
+    
+    if (jsAsset) {
+        return jsAsset.browser_download_url;
+    }
+    
+    // Fallback: look for any .js file
+    const anyJs = release.assets.find(asset => asset.name.endsWith('.js'));
+    return anyJs ? anyJs.browser_download_url : null;
+}
+
+/**
+ * Download the extension file
+ */
+async function downloadExtension(url: string): Promise<string | null> {
+    try {
+        updateState.status = 'Downloading...';
+        updateState.progress = 10;
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`Download failed: ${response.status}`);
+        }
+        
+        updateState.progress = 50;
+        const content = await response.text();
+        updateState.progress = 80;
+        
+        return content;
+    } catch (error) {
+        console.error('[SpicyLyricTranslater] Download failed:', error);
+        return null;
+    }
+}
+
+/**
+ * Trigger a browser download of the extension file
+ */
+function triggerFileDownload(content: string, filename: string): void {
+    const blob = new Blob([content], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Get the Spicetify extensions directory path based on OS
+ */
+function getExtensionsPath(): string {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+        return '%APPDATA%\\spicetify\\Extensions\\';
+    } else if (platform.includes('mac')) {
+        return '~/.config/spicetify/Extensions/';
+    } else {
+        return '~/.config/spicetify/Extensions/';
+    }
+}
+
+/**
+ * Install the extension update by triggering download and showing instructions
+ */
+async function installUpdate(content: string, version: string): Promise<boolean> {
+    try {
+        updateState.status = 'Preparing download...';
+        updateState.progress = 90;
+        
+        // Trigger the file download
+        triggerFileDownload(content, EXTENSION_FILENAME);
+        
+        // Save the version for tracking
+        storage.set('pending-update-version', version);
+        storage.set('pending-update-timestamp', Date.now().toString());
+        
+        updateState.progress = 100;
+        updateState.status = 'Download started!';
+        
+        return true;
+    } catch (error) {
+        console.error('[SpicyLyricTranslater] Installation failed:', error);
+        return false;
+    }
+}
+
+/**
+ * Perform the actual update - download, install, and prompt for reload
+ */
+async function performUpdate(release: GitHubRelease, version: VersionInfo, modalContent: HTMLElement): Promise<void> {
+    if (updateState.isUpdating) return;
+    
+    updateState.isUpdating = true;
+    updateState.progress = 0;
+    updateState.status = 'Starting update...';
+    
+    const progressContainer = modalContent.querySelector('.update-progress');
+    const progressBar = modalContent.querySelector('.progress-bar-fill') as HTMLElement;
+    const progressText = modalContent.querySelector('.progress-text');
+    const buttonsContainer = modalContent.querySelector('.update-buttons');
+    
+    if (progressContainer) {
+        (progressContainer as HTMLElement).style.display = 'block';
+    }
+    if (buttonsContainer) {
+        (buttonsContainer as HTMLElement).style.display = 'none';
+    }
+    
+    const updateProgress = () => {
+        if (progressBar) {
+            progressBar.style.width = `${updateState.progress}%`;
+        }
+        if (progressText) {
+            progressText.textContent = updateState.status;
+        }
+    };
+    
+    try {
+        // Get download URL
+        const downloadUrl = getExtensionDownloadUrl(release);
+        
+        if (!downloadUrl) {
+            throw new Error('No download URL found in release');
+        }
+        
+        updateProgress();
+        
+        // Download the extension
+        const content = await downloadExtension(downloadUrl);
+        
+        if (!content) {
+            throw new Error('Download failed');
+        }
+        
+        updateProgress();
+        
+        // Install the update
+        const installed = await installUpdate(content, version.text);
+        
+        if (!installed) {
+            throw new Error('Installation failed');
+        }
+        
+        updateProgress();
+        
+        // Show success message with instructions
+        if (progressContainer && buttonsContainer) {
+            const extensionsPath = getExtensionsPath();
+            (progressContainer as HTMLElement).innerHTML = `
+                <div class="update-success">
+                    <span class="success-icon">✅</span>
+                    <span class="success-text">Update downloaded!</span>
+                </div>
+                <div class="update-instructions">
+                    <p><strong>To complete the update:</strong></p>
+                    <ol>
+                        <li>Move the downloaded file to:<br><code>${extensionsPath}</code></li>
+                        <li>Replace the existing file if prompted</li>
+                        <li>Run <code>spicetify apply</code> in your terminal</li>
+                        <li>Restart Spotify</li>
+                    </ol>
+                </div>
+            `;
+            
+            (buttonsContainer as HTMLElement).style.display = 'flex';
+            (buttonsContainer as HTMLElement).innerHTML = `
+                <button class="update-btn secondary" id="slt-copy-path">Copy Path</button>
+                <button class="update-btn primary" id="slt-update-done">Done</button>
+            `;
+            
+            // Add new event listeners
+            setTimeout(() => {
+                const copyBtn = document.getElementById('slt-copy-path');
+                const doneBtn = document.getElementById('slt-update-done');
+                
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', () => {
+                        navigator.clipboard.writeText(extensionsPath.replace(/%APPDATA%/g, '').replace(/~/g, ''));
+                        if (Spicetify.showNotification) {
+                            Spicetify.showNotification('Path copied to clipboard!');
+                        }
+                    });
+                }
+                
+                if (doneBtn) {
+                    doneBtn.addEventListener('click', () => {
+                        Spicetify.PopupModal.hide();
+                    });
+                }
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('[SpicyLyricTranslater] Update failed:', error);
+        
+        updateState.status = 'Update failed';
+        updateProgress();
+        
+        // Show error with manual download option
+        if (progressContainer && buttonsContainer) {
+            (progressContainer as HTMLElement).innerHTML = `
+                <div class="update-error">
+                    <span class="error-icon">❌</span>
+                    <span class="error-text">Update failed. Please try manual download.</span>
+                </div>
+            `;
+            
+            (buttonsContainer as HTMLElement).style.display = 'flex';
+            (buttonsContainer as HTMLElement).innerHTML = `
+                <button class="update-btn secondary" id="slt-update-cancel">Cancel</button>
+                <button class="update-btn primary" id="slt-manual-download">Download Manually</button>
+            `;
+            
+            setTimeout(() => {
+                const cancelBtn = document.getElementById('slt-update-cancel');
+                const manualBtn = document.getElementById('slt-manual-download');
+                
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', () => {
+                        Spicetify.PopupModal.hide();
+                    });
+                }
+                
+                if (manualBtn) {
+                    manualBtn.addEventListener('click', () => {
+                        window.open(release.html_url, '_blank');
+                        Spicetify.PopupModal.hide();
+                    });
+                }
+            }, 100);
+        }
+    } finally {
+        updateState.isUpdating = false;
+    }
 }
 
 /**
@@ -184,6 +502,48 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
                 white-space: pre-wrap;
                 line-height: 1.5;
             }
+            .slt-update-modal .update-progress {
+                display: none;
+                background: var(--spice-card);
+                padding: 16px;
+                border-radius: 8px;
+                margin-bottom: 16px;
+            }
+            .slt-update-modal .progress-bar {
+                height: 8px;
+                background: var(--spice-button);
+                border-radius: 4px;
+                overflow: hidden;
+                margin-bottom: 8px;
+            }
+            .slt-update-modal .progress-bar-fill {
+                height: 100%;
+                background: #1db954;
+                border-radius: 4px;
+                transition: width 0.3s ease;
+                width: 0%;
+            }
+            .slt-update-modal .progress-text {
+                font-size: 13px;
+                color: var(--spice-subtext);
+                text-align: center;
+            }
+            .slt-update-modal .update-success {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: #1db954;
+            }
+            .slt-update-modal .update-error {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: #e74c3c;
+            }
+            .slt-update-modal .success-icon,
+            .slt-update-modal .error-icon {
+                font-size: 20px;
+            }
             .slt-update-modal .update-buttons {
                 display: flex;
                 gap: 12px;
@@ -213,6 +573,40 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
             .slt-update-modal .update-btn.secondary:hover {
                 background: var(--spice-button);
             }
+            .slt-update-modal .update-instructions {
+                background: var(--spice-card);
+                border-radius: 8px;
+                padding: 16px;
+                margin-top: 16px;
+            }
+            .slt-update-modal .update-instructions p {
+                margin: 0 0 12px 0;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .update-instructions code {
+                background: rgba(0, 0, 0, 0.3);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'Fira Code', 'Consolas', monospace;
+                font-size: 12px;
+                color: #1db954;
+                word-break: break-all;
+            }
+            .slt-update-modal .update-instructions ol {
+                margin: 0;
+                padding-left: 20px;
+                color: var(--spice-subtext);
+            }
+            .slt-update-modal .update-instructions li {
+                margin-bottom: 8px;
+                line-height: 1.5;
+            }
+            .slt-update-modal .update-instructions li:last-child {
+                margin-bottom: 0;
+            }
+            .slt-update-modal .update-instructions li code {
+                display: inline-block;
+            }
         </style>
         <div class="update-header">🎉 A new version is available!</div>
         <div class="version-info">
@@ -231,9 +625,15 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
                 <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
             </div>
         ` : ''}
+        <div class="update-progress">
+            <div class="progress-bar">
+                <div class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-text">Starting update...</div>
+        </div>
         <div class="update-buttons">
             <button class="update-btn secondary" id="slt-update-later">Later</button>
-            <button class="update-btn primary" id="slt-update-now">Download Update</button>
+            <button class="update-btn primary" id="slt-update-now">Install Update</button>
         </div>
     `;
     
@@ -257,8 +657,8 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
             
             if (updateBtn) {
                 updateBtn.addEventListener('click', () => {
-                    window.open(release.html_url, '_blank');
-                    Spicetify.PopupModal.hide();
+                    // Start the automatic update process
+                    performUpdate(release, latestVersion, content);
                 });
             }
         }, 100);

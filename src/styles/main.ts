@@ -205,6 +205,141 @@ export const styles = `
     color: inherit;
     font-family: inherit;
 }
+
+/* ========================================
+   CONNECTION INDICATOR STYLES
+   ======================================== */
+
+/* Spinner animation */
+@keyframes slt-ci-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.slt-ci-spinner {
+    animation: slt-ci-spin 1s linear infinite;
+}
+
+/* Main container - minimal button design */
+.SLT_ConnectionIndicator {
+    margin-left: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.slt-ci-button {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 6px;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    max-width: 24px;
+}
+
+.slt-ci-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    max-width: 120px;
+    padding: 6px 10px;
+    gap: 8px;
+}
+
+/* The status dot */
+.slt-ci-dot {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    background: #666;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.slt-ci-dot.slt-ci-connecting {
+    background: #888;
+    animation: slt-ci-pulse 1.5s ease-in-out infinite;
+}
+
+.slt-ci-dot.slt-ci-connected {
+    background: #1db954;
+}
+
+.slt-ci-dot.slt-ci-error {
+    background: #e74c3c;
+}
+
+.slt-ci-dot.slt-ci-great {
+    background: #1db954;
+}
+
+.slt-ci-dot.slt-ci-ok {
+    background: #ffe666;
+}
+
+.slt-ci-dot.slt-ci-bad {
+    background: #ff944d;
+}
+
+.slt-ci-dot.slt-ci-horrible {
+    background: #e74c3c;
+}
+
+@keyframes slt-ci-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Expanded content - hidden by default */
+.slt-ci-expanded {
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    max-width: 0;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+}
+
+.slt-ci-button:hover .slt-ci-expanded {
+    opacity: 1;
+    max-width: 100px;
+}
+
+.slt-ci-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: var(--spice-subtext, #b3b3b3);
+}
+
+.slt-ci-ping {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.6rem;
+    color: var(--spice-text, #fff);
+}
+
+.slt-ci-divider {
+    opacity: 0.3;
+    font-size: 0.5rem;
+}
+
+.slt-ci-users-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--spice-text, #fff);
+    font-size: 0.6rem;
+}
+
+.slt-ci-users-count svg {
+    color: var(--spice-subtext, #b3b3b3);
+    opacity: 0.7;
+}
 `;
 
 /**

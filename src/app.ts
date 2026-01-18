@@ -11,6 +11,7 @@ import { storage } from './utils/storage';
 import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
 import { injectStyles } from './styles/main';
 import { checkForUpdates, startUpdateChecker, getUpdateInfo, getCurrentVersion, VERSION, REPO_URL } from './utils/updater';
+import { initConnectionIndicator, cleanupConnectionIndicator, getConnectionState, refreshConnection } from './utils/connectivity';
 
 // Extension state
 interface ExtensionState {
@@ -1245,6 +1246,8 @@ async function onSpicyLyricsOpen(): Promise<void> {
         injectStylesIntoPIP();
         // Setup observers
         setupViewControlsObserver();
+        // Initialize connection indicator for active user count
+        initConnectionIndicator();
     } else {
         console.log('[SpicyLyricTranslater] ViewControls not found, will retry...');
     }
@@ -1298,6 +1301,9 @@ function onSpicyLyricsClose(): void {
         lyricsObserver.disconnect();
         lyricsObserver = null;
     }
+    
+    // Cleanup connection indicator
+    cleanupConnectionIndicator();
 }
 
 /**
@@ -1676,7 +1682,12 @@ window.SpicyLyricTranslater = {
     getState: () => ({ ...state }),
     checkForUpdates: () => checkForUpdates(true),
     getUpdateInfo: getUpdateInfo,
-    version: VERSION
+    version: VERSION,
+    // Connectivity features
+    connectivity: {
+        getState: getConnectionState,
+        refresh: refreshConnection
+    }
 };
 
 // Start initialization

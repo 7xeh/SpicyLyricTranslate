@@ -5,6 +5,8 @@ Real-time lyric translation for [Spicy Lyrics](https://github.com/Spikerko/spicy
 ![Spicetify](https://img.shields.io/badge/Spicetify-Extension-1DB954?style=flat-square&logo=spotify&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
+Discord: https://discord.gg/fXK34DeDW5
+
 ![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
 
 ## Quick Start

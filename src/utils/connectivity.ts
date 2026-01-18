@@ -469,15 +469,22 @@ function getIndicatorContainer(): HTMLElement | null {
  * Append the indicator to the DOM
  */
 function appendToDOM(): boolean {
-    if (containerElement && document.body.contains(containerElement)) {
+    if (containerElement && containerElement.parentNode) {
         return true; // Already appended
     }
 
-    // Since we use fixed positioning, we can just append to body
-    containerElement = createIndicatorElement();
-    document.body.appendChild(containerElement);
-    console.log('[SpicyLyricTranslater] Connection indicator appended to body');
-    return true;
+    // Find the topbar content right container (where notification bell lives)
+    const topBarContentRight = document.querySelector('.main-topBar-topbarContentRight');
+    if (topBarContentRight) {
+        containerElement = createIndicatorElement();
+        // Insert at the beginning of the container (before other buttons)
+        topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
+        console.log('[SpicyLyricTranslater] Connection indicator appended to topbar content right');
+        return true;
+    }
+
+    console.log('[SpicyLyricTranslater] Could not find topbar content right container, retrying...');
+    return false;
 }
 
 /**

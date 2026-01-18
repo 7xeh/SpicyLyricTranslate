@@ -220,14 +220,11 @@ export const styles = `
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - positioned in top right, next to notification bell */
+/* Main container - inside topbar content right container */
 .SLT_ConnectionIndicator {
-    position: fixed;
-    top: 10px;
-    right: 140px;
-    z-index: 9999;
     display: flex;
     align-items: center;
+    margin-right: 8px;
 }
 
 .slt-ci-button {

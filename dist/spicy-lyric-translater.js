@@ -911,14 +911,11 @@ var SpicyLyricTranslater = (() => {
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - positioned in top right, next to notification bell */
+/* Main container - inside topbar content right container */
 .SLT_ConnectionIndicator {
-    position: fixed;
-    top: 10px;
-    right: 140px;
-    z-index: 9999;
     display: flex;
     align-items: center;
+    margin-right: 8px;
 }
 
 .slt-ci-button {
@@ -1057,7 +1054,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.8" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.9" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -1831,13 +1828,18 @@ var SpicyLyricTranslater = (() => {
     jitterInterval = setInterval(applyJitter, 1e3);
   }
   function appendToDOM() {
-    if (containerElement && document.body.contains(containerElement)) {
+    if (containerElement && containerElement.parentNode) {
       return true;
     }
-    containerElement = createIndicatorElement();
-    document.body.appendChild(containerElement);
-    console.log("[SpicyLyricTranslater] Connection indicator appended to body");
-    return true;
+    const topBarContentRight = document.querySelector(".main-topBar-topbarContentRight");
+    if (topBarContentRight) {
+      containerElement = createIndicatorElement();
+      topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
+      console.log("[SpicyLyricTranslater] Connection indicator appended to topbar content right");
+      return true;
+    }
+    console.log("[SpicyLyricTranslater] Could not find topbar content right container, retrying...");
+    return false;
   }
   async function initConnectionIndicator() {
     if (indicatorState.isInitialized)

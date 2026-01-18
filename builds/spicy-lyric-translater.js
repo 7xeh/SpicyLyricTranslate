@@ -1061,7 +1061,7 @@ var SpicyLyricTranslater = (() => {
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.5.1" : "0.0.0";
+    return true ? "1.5.2" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";

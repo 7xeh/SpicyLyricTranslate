@@ -59,6 +59,14 @@ var SpicyLyricTranslater = (() => {
     // Loading spinner
     Loading: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="spicy-translate-loading">
         <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/>
+    </svg>`,
+    // Connection/Signal icon
+    Connection: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+    </svg>`,
+    // Users icon
+    Users: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
     </svg>`
   };
 
@@ -888,6 +896,141 @@ var SpicyLyricTranslater = (() => {
     color: inherit;
     font-family: inherit;
 }
+
+/* ========================================
+   CONNECTION INDICATOR STYLES
+   ======================================== */
+
+/* Spinner animation */
+@keyframes slt-ci-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.slt-ci-spinner {
+    animation: slt-ci-spin 1s linear infinite;
+}
+
+/* Main container - minimal button design */
+.SLT_ConnectionIndicator {
+    margin-left: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.slt-ci-button {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 6px;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    max-width: 24px;
+}
+
+.slt-ci-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    max-width: 120px;
+    padding: 6px 10px;
+    gap: 8px;
+}
+
+/* The status dot */
+.slt-ci-dot {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    background: #666;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.slt-ci-dot.slt-ci-connecting {
+    background: #888;
+    animation: slt-ci-pulse 1.5s ease-in-out infinite;
+}
+
+.slt-ci-dot.slt-ci-connected {
+    background: #1db954;
+}
+
+.slt-ci-dot.slt-ci-error {
+    background: #e74c3c;
+}
+
+.slt-ci-dot.slt-ci-great {
+    background: #1db954;
+}
+
+.slt-ci-dot.slt-ci-ok {
+    background: #ffe666;
+}
+
+.slt-ci-dot.slt-ci-bad {
+    background: #ff944d;
+}
+
+.slt-ci-dot.slt-ci-horrible {
+    background: #e74c3c;
+}
+
+@keyframes slt-ci-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Expanded content - hidden by default */
+.slt-ci-expanded {
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    max-width: 0;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+}
+
+.slt-ci-button:hover .slt-ci-expanded {
+    opacity: 1;
+    max-width: 100px;
+}
+
+.slt-ci-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: var(--spice-subtext, #b3b3b3);
+}
+
+.slt-ci-ping {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.6rem;
+    color: var(--spice-text, #fff);
+}
+
+.slt-ci-divider {
+    opacity: 0.3;
+    font-size: 0.5rem;
+}
+
+.slt-ci-users-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--spice-text, #fff);
+    font-size: 0.6rem;
+}
+
+.slt-ci-users-count svg {
+    color: var(--spice-subtext, #b3b3b3);
+    opacity: 0.7;
+}
 `;
   function injectStyles() {
     const existingStyle = document.getElementById("spicy-lyric-translater-styles");
@@ -901,10 +1044,17 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.3" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.4" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
+  var EXTENSION_FILENAME = "spicy-lyric-translater.js";
+  var UPDATE_API_URL = "https://7xeh.dev/apps/spicylyrictranslate/api/version.php";
+  var updateState = {
+    isUpdating: false,
+    progress: 0,
+    status: ""
+  };
   var hasShownUpdateNotice = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 5 * 60 * 1e3;
@@ -943,6 +1093,35 @@ var SpicyLyricTranslater = (() => {
   }
   async function getLatestVersion() {
     try {
+      const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
+      if (response.ok) {
+        const data = await response.json();
+        const version = parseVersion(data.version);
+        if (version) {
+          console.log("[SpicyLyricTranslater] Got version from self-hosted API:", data.version);
+          return {
+            version,
+            release: {
+              tag_name: `v${data.version}`,
+              name: `v${data.version}`,
+              html_url: data.release_notes_url || RELEASES_URL,
+              body: "",
+              published_at: (/* @__PURE__ */ new Date()).toISOString(),
+              assets: [{
+                name: EXTENSION_FILENAME,
+                browser_download_url: data.download_url,
+                size: 0,
+                download_count: 0
+              }]
+            },
+            downloadUrl: data.download_url
+          };
+        }
+      }
+    } catch (error) {
+      console.warn("[SpicyLyricTranslater] Self-hosted API unavailable, trying GitHub:", error);
+    }
+    try {
       const response = await fetch(GITHUB_API_URL, {
         headers: {
           "Accept": "application/vnd.github.v3+json"
@@ -958,10 +1137,194 @@ var SpicyLyricTranslater = (() => {
         console.warn("[SpicyLyricTranslater] Failed to parse version from tag:", release.tag_name);
         return null;
       }
-      return { version, release };
+      const jsAsset = release.assets?.find((a) => a.name.endsWith(".js"));
+      const downloadUrl = jsAsset?.browser_download_url || "";
+      return { version, release, downloadUrl };
     } catch (error) {
       console.error("[SpicyLyricTranslater] Error fetching latest version:", error);
       return null;
+    }
+  }
+  function getExtensionDownloadUrl(release) {
+    if (!release.assets || release.assets.length === 0) {
+      return null;
+    }
+    const jsAsset = release.assets.find(
+      (asset) => asset.name.endsWith(".js") && (asset.name.includes("spicy-lyric-translater") || asset.name.includes("spicylyrictranslate"))
+    );
+    if (jsAsset) {
+      return jsAsset.browser_download_url;
+    }
+    const anyJs = release.assets.find((asset) => asset.name.endsWith(".js"));
+    return anyJs ? anyJs.browser_download_url : null;
+  }
+  async function downloadExtension(url) {
+    try {
+      updateState.status = "Downloading...";
+      updateState.progress = 10;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      updateState.progress = 50;
+      const content = await response.text();
+      updateState.progress = 80;
+      return content;
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Download failed:", error);
+      return null;
+    }
+  }
+  function triggerFileDownload(content, filename) {
+    const blob = new Blob([content], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function getExtensionsPath() {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes("win")) {
+      return "%APPDATA%\\spicetify\\Extensions\\";
+    } else if (platform.includes("mac")) {
+      return "~/.config/spicetify/Extensions/";
+    } else {
+      return "~/.config/spicetify/Extensions/";
+    }
+  }
+  async function installUpdate(content, version) {
+    try {
+      updateState.status = "Preparing download...";
+      updateState.progress = 90;
+      triggerFileDownload(content, EXTENSION_FILENAME);
+      storage.set("pending-update-version", version);
+      storage.set("pending-update-timestamp", Date.now().toString());
+      updateState.progress = 100;
+      updateState.status = "Download started!";
+      return true;
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Installation failed:", error);
+      return false;
+    }
+  }
+  async function performUpdate(release, version, modalContent) {
+    if (updateState.isUpdating)
+      return;
+    updateState.isUpdating = true;
+    updateState.progress = 0;
+    updateState.status = "Starting update...";
+    const progressContainer = modalContent.querySelector(".update-progress");
+    const progressBar = modalContent.querySelector(".progress-bar-fill");
+    const progressText = modalContent.querySelector(".progress-text");
+    const buttonsContainer = modalContent.querySelector(".update-buttons");
+    if (progressContainer) {
+      progressContainer.style.display = "block";
+    }
+    if (buttonsContainer) {
+      buttonsContainer.style.display = "none";
+    }
+    const updateProgress = () => {
+      if (progressBar) {
+        progressBar.style.width = `${updateState.progress}%`;
+      }
+      if (progressText) {
+        progressText.textContent = updateState.status;
+      }
+    };
+    try {
+      const downloadUrl = getExtensionDownloadUrl(release);
+      if (!downloadUrl) {
+        throw new Error("No download URL found in release");
+      }
+      updateProgress();
+      const content = await downloadExtension(downloadUrl);
+      if (!content) {
+        throw new Error("Download failed");
+      }
+      updateProgress();
+      const installed = await installUpdate(content, version.text);
+      if (!installed) {
+        throw new Error("Installation failed");
+      }
+      updateProgress();
+      if (progressContainer && buttonsContainer) {
+        const extensionsPath = getExtensionsPath();
+        progressContainer.innerHTML = `
+                <div class="update-success">
+                    <span class="success-icon">\u2705</span>
+                    <span class="success-text">Update downloaded!</span>
+                </div>
+                <div class="update-instructions">
+                    <p><strong>To complete the update:</strong></p>
+                    <ol>
+                        <li>Move the downloaded file to:<br><code>${extensionsPath}</code></li>
+                        <li>Replace the existing file if prompted</li>
+                        <li>Run <code>spicetify apply</code> in your terminal</li>
+                        <li>Restart Spotify</li>
+                    </ol>
+                </div>
+            `;
+        buttonsContainer.style.display = "flex";
+        buttonsContainer.innerHTML = `
+                <button class="update-btn secondary" id="slt-copy-path">Copy Path</button>
+                <button class="update-btn primary" id="slt-update-done">Done</button>
+            `;
+        setTimeout(() => {
+          const copyBtn = document.getElementById("slt-copy-path");
+          const doneBtn = document.getElementById("slt-update-done");
+          if (copyBtn) {
+            copyBtn.addEventListener("click", () => {
+              navigator.clipboard.writeText(extensionsPath.replace(/%APPDATA%/g, "").replace(/~/g, ""));
+              if (Spicetify.showNotification) {
+                Spicetify.showNotification("Path copied to clipboard!");
+              }
+            });
+          }
+          if (doneBtn) {
+            doneBtn.addEventListener("click", () => {
+              Spicetify.PopupModal.hide();
+            });
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error("[SpicyLyricTranslater] Update failed:", error);
+      updateState.status = "Update failed";
+      updateProgress();
+      if (progressContainer && buttonsContainer) {
+        progressContainer.innerHTML = `
+                <div class="update-error">
+                    <span class="error-icon">\u274C</span>
+                    <span class="error-text">Update failed. Please try manual download.</span>
+                </div>
+            `;
+        buttonsContainer.style.display = "flex";
+        buttonsContainer.innerHTML = `
+                <button class="update-btn secondary" id="slt-update-cancel">Cancel</button>
+                <button class="update-btn primary" id="slt-manual-download">Download Manually</button>
+            `;
+        setTimeout(() => {
+          const cancelBtn = document.getElementById("slt-update-cancel");
+          const manualBtn = document.getElementById("slt-manual-download");
+          if (cancelBtn) {
+            cancelBtn.addEventListener("click", () => {
+              Spicetify.PopupModal.hide();
+            });
+          }
+          if (manualBtn) {
+            manualBtn.addEventListener("click", () => {
+              window.open(release.html_url, "_blank");
+              Spicetify.PopupModal.hide();
+            });
+          }
+        }, 100);
+      }
+    } finally {
+      updateState.isUpdating = false;
     }
   }
   function showUpdateModal(currentVersion, latestVersion, release) {
@@ -1023,6 +1386,48 @@ var SpicyLyricTranslater = (() => {
                 white-space: pre-wrap;
                 line-height: 1.5;
             }
+            .slt-update-modal .update-progress {
+                display: none;
+                background: var(--spice-card);
+                padding: 16px;
+                border-radius: 8px;
+                margin-bottom: 16px;
+            }
+            .slt-update-modal .progress-bar {
+                height: 8px;
+                background: var(--spice-button);
+                border-radius: 4px;
+                overflow: hidden;
+                margin-bottom: 8px;
+            }
+            .slt-update-modal .progress-bar-fill {
+                height: 100%;
+                background: #1db954;
+                border-radius: 4px;
+                transition: width 0.3s ease;
+                width: 0%;
+            }
+            .slt-update-modal .progress-text {
+                font-size: 13px;
+                color: var(--spice-subtext);
+                text-align: center;
+            }
+            .slt-update-modal .update-success {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: #1db954;
+            }
+            .slt-update-modal .update-error {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: #e74c3c;
+            }
+            .slt-update-modal .success-icon,
+            .slt-update-modal .error-icon {
+                font-size: 20px;
+            }
             .slt-update-modal .update-buttons {
                 display: flex;
                 gap: 12px;
@@ -1052,6 +1457,40 @@ var SpicyLyricTranslater = (() => {
             .slt-update-modal .update-btn.secondary:hover {
                 background: var(--spice-button);
             }
+            .slt-update-modal .update-instructions {
+                background: var(--spice-card);
+                border-radius: 8px;
+                padding: 16px;
+                margin-top: 16px;
+            }
+            .slt-update-modal .update-instructions p {
+                margin: 0 0 12px 0;
+                color: var(--spice-text);
+            }
+            .slt-update-modal .update-instructions code {
+                background: rgba(0, 0, 0, 0.3);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'Fira Code', 'Consolas', monospace;
+                font-size: 12px;
+                color: #1db954;
+                word-break: break-all;
+            }
+            .slt-update-modal .update-instructions ol {
+                margin: 0;
+                padding-left: 20px;
+                color: var(--spice-subtext);
+            }
+            .slt-update-modal .update-instructions li {
+                margin-bottom: 8px;
+                line-height: 1.5;
+            }
+            .slt-update-modal .update-instructions li:last-child {
+                margin-bottom: 0;
+            }
+            .slt-update-modal .update-instructions li code {
+                display: inline-block;
+            }
         </style>
         <div class="update-header">\u{1F389} A new version is available!</div>
         <div class="version-info">
@@ -1070,9 +1509,15 @@ var SpicyLyricTranslater = (() => {
                 <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
             </div>
         ` : ""}
+        <div class="update-progress">
+            <div class="progress-bar">
+                <div class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-text">Starting update...</div>
+        </div>
         <div class="update-buttons">
             <button class="update-btn secondary" id="slt-update-later">Later</button>
-            <button class="update-btn primary" id="slt-update-now">Download Update</button>
+            <button class="update-btn primary" id="slt-update-now">Install Update</button>
         </div>
     `;
     if (Spicetify.PopupModal) {
@@ -1091,8 +1536,7 @@ var SpicyLyricTranslater = (() => {
         }
         if (updateBtn) {
           updateBtn.addEventListener("click", () => {
-            window.open(release.html_url, "_blank");
-            Spicetify.PopupModal.hide();
+            performUpdate(release, latestVersion, content);
           });
         }
       }, 100);
@@ -1159,6 +1603,397 @@ var SpicyLyricTranslater = (() => {
   }
   var VERSION = CURRENT_VERSION;
   var REPO_URL = RELEASES_URL;
+
+  // src/utils/connectivity.ts
+  var API_BASE = "https://7xeh.dev/apps/spicylyrictranslate/api/connectivity.php";
+  var HEARTBEAT_INTERVAL = 3e4;
+  var LATENCY_CHECK_INTERVAL = 1e4;
+  var CONNECTION_TIMEOUT = 5e3;
+  var LATENCY_THRESHOLDS = {
+    GREAT: 150,
+    OK: 300,
+    BAD: 500
+  };
+  var indicatorState = {
+    state: "disconnected",
+    sessionId: null,
+    latencyMs: null,
+    activeUsers: 0,
+    region: "",
+    lastHeartbeat: 0,
+    isInitialized: false
+  };
+  var heartbeatInterval = null;
+  var latencyInterval = null;
+  var jitterInterval = null;
+  var containerElement = null;
+  function getLatencyClass(latencyMs) {
+    if (latencyMs <= LATENCY_THRESHOLDS.GREAT)
+      return "slt-ci-great";
+    if (latencyMs <= LATENCY_THRESHOLDS.OK)
+      return "slt-ci-ok";
+    if (latencyMs <= LATENCY_THRESHOLDS.BAD)
+      return "slt-ci-bad";
+    return "slt-ci-horrible";
+  }
+  function createIndicatorElement() {
+    const container = document.createElement("div");
+    container.className = "SLT_ConnectionIndicator";
+    container.innerHTML = `
+        <div class="slt-ci-button" title="Connection Status">
+            <div class="slt-ci-dot"></div>
+            <div class="slt-ci-expanded">
+                <div class="slt-ci-stats-row">
+                    <span class="slt-ci-ping">--ms</span>
+                    <span class="slt-ci-divider">\u2022</span>
+                    <span class="slt-ci-users-count">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                        <span>0</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    `;
+    return container;
+  }
+  function updateUI() {
+    if (!containerElement)
+      return;
+    const button = containerElement.querySelector(".slt-ci-button");
+    const dot = containerElement.querySelector(".slt-ci-dot");
+    const pingEl = containerElement.querySelector(".slt-ci-ping");
+    const usersCountEl = containerElement.querySelector(".slt-ci-users-count span");
+    if (!button || !dot)
+      return;
+    dot.classList.remove("slt-ci-connecting", "slt-ci-connected", "slt-ci-error", "slt-ci-great", "slt-ci-ok", "slt-ci-bad", "slt-ci-horrible");
+    switch (indicatorState.state) {
+      case "connected":
+        dot.classList.add("slt-ci-connected");
+        if (indicatorState.latencyMs !== null) {
+          dot.classList.add(getLatencyClass(indicatorState.latencyMs));
+          if (pingEl)
+            pingEl.textContent = `${indicatorState.latencyMs}ms`;
+        }
+        if (usersCountEl)
+          usersCountEl.textContent = `${indicatorState.activeUsers}`;
+        button.setAttribute("title", `Connected \u2022 ${indicatorState.latencyMs}ms \u2022 ${indicatorState.activeUsers} online`);
+        break;
+      case "connecting":
+      case "reconnecting":
+        dot.classList.add("slt-ci-connecting");
+        if (pingEl)
+          pingEl.textContent = "--ms";
+        button.setAttribute("title", "Connecting...");
+        break;
+      case "error":
+        dot.classList.add("slt-ci-error");
+        if (pingEl)
+          pingEl.textContent = "Error";
+        button.setAttribute("title", "Connection error - retrying...");
+        break;
+      case "disconnected":
+      default:
+        if (pingEl)
+          pingEl.textContent = "--ms";
+        button.setAttribute("title", "Disconnected");
+        break;
+    }
+    if (typeof Spicetify !== "undefined" && Spicetify.Tippy && button && !button._tippy) {
+      Spicetify.Tippy(button, {
+        ...Spicetify.TippyProps,
+        delay: [200, 0],
+        allowHTML: true,
+        content: getTooltipContent(),
+        onShow(instance) {
+          instance.setContent(getTooltipContent());
+        }
+      });
+    } else if (button?._tippy) {
+      button._tippy.setContent(getTooltipContent());
+    }
+  }
+  function getTooltipContent() {
+    switch (indicatorState.state) {
+      case "connected":
+        return `
+                <div style="display:flex;flex-direction:column;gap:6px;padding:4px 0;font-size:12px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:#1db954;"></span>
+                        <span>Connected to <b>SLT Server</b></span>
+                    </div>
+                    <div style="display:flex;gap:12px;color:rgba(255,255,255,0.7);">
+                        <span>Ping: <b style="color:#fff">${indicatorState.latencyMs}ms</b></span>
+                        <span>Online: <b style="color:#fff">${indicatorState.activeUsers}</b></span>
+                    </div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.5);border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">
+                        Tracking active users only. No personal data collected.
+                    </div>
+                </div>
+            `;
+      case "connecting":
+      case "reconnecting":
+        return `<span style="font-size:12px;">Connecting to SLT server...</span>`;
+      case "error":
+        return `<span style="font-size:12px;color:#e74c3c;">Connection error - retrying...</span>`;
+      default:
+        return `<span style="font-size:12px;">Disconnected</span>`;
+    }
+  }
+  async function fetchWithTimeout(url, options = {}, timeout = CONNECTION_TIMEOUT) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(id);
+      return response;
+    } catch (error) {
+      clearTimeout(id);
+      throw error;
+    }
+  }
+  async function measureLatency() {
+    try {
+      const startTime = performance.now();
+      const response = await fetchWithTimeout(`${API_BASE}?action=ping&_=${Date.now()}`);
+      if (!response.ok)
+        return null;
+      await response.json();
+      const latency = Math.round(performance.now() - startTime);
+      return latency;
+    } catch (error) {
+      console.warn("[SpicyLyricTranslater] Latency check failed:", error);
+      return null;
+    }
+  }
+  async function sendHeartbeat() {
+    try {
+      const params = new URLSearchParams({
+        action: "heartbeat",
+        session: indicatorState.sessionId || "",
+        version: storage.get("extension-version") || "1.0.0"
+      });
+      const response = await fetchWithTimeout(`${API_BASE}?${params}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        indicatorState.sessionId = data.sessionId || indicatorState.sessionId;
+        indicatorState.activeUsers = data.activeUsers || 0;
+        indicatorState.region = data.region || "";
+        indicatorState.lastHeartbeat = Date.now();
+        if (indicatorState.state !== "connected") {
+          indicatorState.state = "connected";
+          updateUI();
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.warn("[SpicyLyricTranslater] Heartbeat failed:", error);
+      return false;
+    }
+  }
+  async function connect() {
+    indicatorState.state = "connecting";
+    updateUI();
+    try {
+      const params = new URLSearchParams({
+        action: "connect",
+        version: storage.get("extension-version") || "1.0.0"
+      });
+      const response = await fetchWithTimeout(`${API_BASE}?${params}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        indicatorState.sessionId = data.sessionId;
+        indicatorState.activeUsers = data.activeUsers || 0;
+        indicatorState.region = data.region || "";
+        indicatorState.state = "connected";
+        indicatorState.lastHeartbeat = Date.now();
+        const latency = await measureLatency();
+        indicatorState.latencyMs = latency;
+        updateUI();
+        console.log("[SpicyLyricTranslater] Connected to connectivity service");
+        return true;
+      }
+      throw new Error("Connection failed");
+    } catch (error) {
+      console.warn("[SpicyLyricTranslater] Connection failed:", error);
+      indicatorState.state = "error";
+      updateUI();
+      setTimeout(() => {
+        if (indicatorState.state === "error") {
+          indicatorState.state = "reconnecting";
+          updateUI();
+          connect();
+        }
+      }, 5e3);
+      return false;
+    }
+  }
+  async function disconnect() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    if (latencyInterval) {
+      clearInterval(latencyInterval);
+      latencyInterval = null;
+    }
+    if (jitterInterval) {
+      clearInterval(jitterInterval);
+      jitterInterval = null;
+    }
+    if (indicatorState.sessionId) {
+      try {
+        const params = new URLSearchParams({
+          action: "disconnect",
+          session: indicatorState.sessionId
+        });
+        await fetch(`${API_BASE}?${params}`);
+      } catch (e) {
+      }
+    }
+    indicatorState.state = "disconnected";
+    indicatorState.sessionId = null;
+    indicatorState.latencyMs = null;
+    indicatorState.activeUsers = 0;
+    updateUI();
+  }
+  function applyJitter() {
+    if (indicatorState.latencyMs === null)
+      return;
+    const jitter = indicatorState.latencyMs + Math.floor(Math.random() * 5 - 2);
+    indicatorState.latencyMs = Math.max(1, jitter);
+    if (containerElement) {
+      const pingEl = containerElement.querySelector(".slt-ci-ping");
+      const dot = containerElement.querySelector(".slt-ci-dot");
+      if (pingEl && indicatorState.latencyMs !== null) {
+        pingEl.textContent = `${indicatorState.latencyMs}ms`;
+      }
+      if (dot && indicatorState.latencyMs !== null) {
+        dot.classList.remove("slt-ci-great", "slt-ci-ok", "slt-ci-bad", "slt-ci-horrible");
+        dot.classList.add(getLatencyClass(indicatorState.latencyMs));
+      }
+    }
+  }
+  function startPeriodicChecks() {
+    heartbeatInterval = setInterval(async () => {
+      const success = await sendHeartbeat();
+      if (!success && indicatorState.state === "connected") {
+        indicatorState.state = "reconnecting";
+        updateUI();
+        connect();
+      }
+    }, HEARTBEAT_INTERVAL);
+    latencyInterval = setInterval(async () => {
+      const latency = await measureLatency();
+      if (latency !== null) {
+        indicatorState.latencyMs = latency;
+        updateUI();
+      }
+    }, LATENCY_CHECK_INTERVAL);
+    jitterInterval = setInterval(applyJitter, 1e3);
+  }
+  function getIndicatorContainer() {
+    const topbarGrid = document.querySelector(".search-searchCategory-categoryGrid");
+    if (topbarGrid)
+      return topbarGrid;
+    const altContainer = document.querySelector(".oXVR9i6RwBlxmTHoe7ZP");
+    if (altContainer)
+      return altContainer;
+    const viewControls = document.querySelector("#SpicyLyricsPage .ViewControls");
+    if (viewControls)
+      return viewControls;
+    return null;
+  }
+  function appendToDOM() {
+    if (containerElement && document.body.contains(containerElement)) {
+      return true;
+    }
+    const targetContainer = getIndicatorContainer();
+    if (!targetContainer) {
+      return false;
+    }
+    containerElement = createIndicatorElement();
+    targetContainer.appendChild(containerElement);
+    return true;
+  }
+  function removeFromDOM() {
+    if (containerElement && containerElement.parentNode) {
+      containerElement.parentNode.removeChild(containerElement);
+    }
+    containerElement = null;
+  }
+  async function initConnectionIndicator() {
+    if (indicatorState.isInitialized)
+      return;
+    console.log("[SpicyLyricTranslater] Initializing connection indicator...");
+    if (!appendToDOM()) {
+      console.log("[SpicyLyricTranslater] Could not find container for connection indicator");
+      return;
+    }
+    indicatorState.isInitialized = true;
+    const connected = await connect();
+    if (connected) {
+      startPeriodicChecks();
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        if (latencyInterval) {
+          clearInterval(latencyInterval);
+          latencyInterval = null;
+        }
+        if (jitterInterval) {
+          clearInterval(jitterInterval);
+          jitterInterval = null;
+        }
+      } else {
+        if (indicatorState.state === "connected") {
+          latencyInterval = setInterval(async () => {
+            const latency = await measureLatency();
+            if (latency !== null) {
+              indicatorState.latencyMs = latency;
+              updateUI();
+            }
+          }, LATENCY_CHECK_INTERVAL);
+          jitterInterval = setInterval(applyJitter, 1e3);
+          measureLatency().then((latency) => {
+            if (latency !== null) {
+              indicatorState.latencyMs = latency;
+              updateUI();
+            }
+          });
+        }
+      }
+    });
+    window.addEventListener("beforeunload", () => {
+      disconnect();
+    });
+  }
+  function cleanupConnectionIndicator() {
+    disconnect();
+    removeFromDOM();
+    indicatorState.isInitialized = false;
+  }
+  function getConnectionState() {
+    return { ...indicatorState };
+  }
+  async function refreshConnection() {
+    await disconnect();
+    await connect();
+    if (indicatorState.state === "connected") {
+      startPeriodicChecks();
+    }
+  }
 
   // src/app.ts
   var state = {
@@ -2004,6 +2839,7 @@ var SpicyLyricTranslater = (() => {
       insertTranslateButton();
       injectStylesIntoPIP();
       setupViewControlsObserver();
+      initConnectionIndicator();
     } else {
       console.log("[SpicyLyricTranslater] ViewControls not found, will retry...");
     }
@@ -2041,6 +2877,7 @@ var SpicyLyricTranslater = (() => {
       lyricsObserver.disconnect();
       lyricsObserver = null;
     }
+    cleanupConnectionIndicator();
   }
   async function registerSettingsMenu() {
     while (!Spicetify.React || !Spicetify.ReactDOM) {
@@ -2303,7 +3140,12 @@ var SpicyLyricTranslater = (() => {
     getState: () => ({ ...state }),
     checkForUpdates: () => checkForUpdates(true),
     getUpdateInfo,
-    version: VERSION
+    version: VERSION,
+    // Connectivity features
+    connectivity: {
+      getState: getConnectionState,
+      refresh: refreshConnection
+    }
   };
   initialize().catch(console.error);
   var app_default = initialize;

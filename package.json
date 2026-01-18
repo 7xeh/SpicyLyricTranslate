@@ -1,0 +1,35 @@
+{
+  "name": "spicy-lyric-translater",
+  "version": "1.4.5",
+  "description": "A Spicetify extension that adds translation functionality to Spicy Lyrics",
+  "main": "dist/spicy-lyric-translater.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/7xeh/SpicyLyricTranslate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/7xeh/SpicyLyricTranslate/issues"
+  },
+  "homepage": "https://github.com/7xeh/SpicyLyricTranslate#readme",
+  "scripts": {
+    "build": "node build.js",
+    "build:watch": "node build.js --watch",
+    "deploy": "npm run build && copy dist\\spicy-lyric-translater.js \"%APPDATA%\\spicetify\\Extensions\\\"",
+    "apply": "spicetify apply",
+    "release": "npm run build && copy dist\\spicy-lyric-translater.js builds\\spicy-lyric-translater.js"
+  },
+  "keywords": [
+    "spicetify",
+    "spotify",
+    "lyrics",
+    "translation",
+    "spicy-lyrics",
+    "extension"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.19.0",
+    "typescript": "^5.3.0"
+  }
+}

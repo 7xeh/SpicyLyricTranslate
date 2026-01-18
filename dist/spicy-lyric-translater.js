@@ -1044,7 +1044,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.4" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.5" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;

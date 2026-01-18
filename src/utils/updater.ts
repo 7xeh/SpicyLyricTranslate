@@ -219,10 +219,35 @@ async function downloadExtension(url: string): Promise<string | null> {
         updateState.status = 'Downloading...';
         updateState.progress = 10;
         
-        const response = await fetch(url);
+        // Try self-hosted API download endpoint first (guaranteed CORS support)
+        let response: Response | null = null;
         
-        if (!response.ok) {
-            throw new Error(`Download failed: ${response.status}`);
+        // Use the API download endpoint for CORS compatibility
+        const apiDownloadUrl = `${UPDATE_API_URL}?action=latest&_=${Date.now()}`;
+        
+        try {
+            response = await fetch(apiDownloadUrl, {
+                mode: 'cors',
+                cache: 'no-store'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API download failed: ${response.status}`);
+            }
+            
+            console.log('[SpicyLyricTranslater] Downloaded from self-hosted API');
+        } catch (apiError) {
+            console.warn('[SpicyLyricTranslater] API download failed, trying direct URL:', apiError);
+            
+            // Fallback to direct URL
+            response = await fetch(url, {
+                mode: 'cors',
+                cache: 'no-store'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Direct download failed: ${response.status}`);
+            }
         }
         
         updateState.progress = 50;

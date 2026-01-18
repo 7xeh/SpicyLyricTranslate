@@ -1162,9 +1162,26 @@ var SpicyLyricTranslater = (() => {
     try {
       updateState.status = "Downloading...";
       updateState.progress = 10;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Download failed: ${response.status}`);
+      let response = null;
+      const apiDownloadUrl = `${UPDATE_API_URL}?action=latest&_=${Date.now()}`;
+      try {
+        response = await fetch(apiDownloadUrl, {
+          mode: "cors",
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          throw new Error(`API download failed: ${response.status}`);
+        }
+        console.log("[SpicyLyricTranslater] Downloaded from self-hosted API");
+      } catch (apiError) {
+        console.warn("[SpicyLyricTranslater] API download failed, trying direct URL:", apiError);
+        response = await fetch(url, {
+          mode: "cors",
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          throw new Error(`Direct download failed: ${response.status}`);
+        }
       }
       updateState.progress = 50;
       const content = await response.text();

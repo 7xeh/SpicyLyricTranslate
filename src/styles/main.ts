@@ -246,7 +246,7 @@ export const styles = `
 .slt-ci-button:hover {
     background: rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    max-width: 120px;
+    max-width: 180px;
     padding: 6px 10px;
     gap: 8px;
 }
@@ -309,7 +309,7 @@ export const styles = `
 
 .slt-ci-button:hover .slt-ci-expanded {
     opacity: 1;
-    max-width: 100px;
+    max-width: 160px;
 }
 
 .slt-ci-stats-row {
@@ -342,6 +342,16 @@ export const styles = `
 .slt-ci-users-count svg {
     color: var(--spice-subtext, #b3b3b3);
     opacity: 0.7;
+}
+
+/* Active viewers count - green highlight */
+.slt-ci-users-count.slt-ci-active .slt-ci-active-count {
+    color: #1db954;
+}
+
+.slt-ci-users-count.slt-ci-active svg {
+    color: #1db954;
+    opacity: 0.9;
 }
 `;
 

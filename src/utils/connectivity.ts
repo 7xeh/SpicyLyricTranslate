@@ -28,7 +28,9 @@ interface ConnectionIndicatorState {
     state: ConnectionState;
     sessionId: string | null;
     latencyMs: number | null;
+    totalUsers: number;
     activeUsers: number;
+    isViewingLyrics: boolean;
     region: string;
     lastHeartbeat: number;
     isInitialized: boolean;
@@ -38,7 +40,9 @@ const indicatorState: ConnectionIndicatorState = {
     state: 'disconnected',
     sessionId: null,
     latencyMs: null,
+    totalUsers: 0,
     activeUsers: 0,
+    isViewingLyrics: false,
     region: '',
     lastHeartbeat: 0,
     isInitialized: false
@@ -85,11 +89,18 @@ function createIndicatorElement(): HTMLElement {
                 <div class="slt-ci-stats-row">
                     <span class="slt-ci-ping">--ms</span>
                     <span class="slt-ci-divider">•</span>
-                    <span class="slt-ci-users-count">
+                    <span class="slt-ci-users-count slt-ci-total" title="Total installed">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                         </svg>
-                        <span>0</span>
+                        <span class="slt-ci-total-count">0</span>
+                    </span>
+                    <span class="slt-ci-divider">•</span>
+                    <span class="slt-ci-users-count slt-ci-active" title="Viewing lyrics">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        </svg>
+                        <span class="slt-ci-active-count">0</span>
                     </span>
                 </div>
             </div>
@@ -107,7 +118,8 @@ function updateUI(): void {
     const button = containerElement.querySelector('.slt-ci-button');
     const dot = containerElement.querySelector('.slt-ci-dot');
     const pingEl = containerElement.querySelector('.slt-ci-ping');
-    const usersCountEl = containerElement.querySelector('.slt-ci-users-count span');
+    const totalCountEl = containerElement.querySelector('.slt-ci-total-count');
+    const activeCountEl = containerElement.querySelector('.slt-ci-active-count');
     
     if (!button || !dot) return;
 
@@ -121,8 +133,9 @@ function updateUI(): void {
                 dot.classList.add(getLatencyClass(indicatorState.latencyMs));
                 if (pingEl) pingEl.textContent = `${indicatorState.latencyMs}ms`;
             }
-            if (usersCountEl) usersCountEl.textContent = `${indicatorState.activeUsers}`;
-            button.setAttribute('title', `Connected • ${indicatorState.latencyMs}ms • ${indicatorState.activeUsers} online`);
+            if (totalCountEl) totalCountEl.textContent = `${indicatorState.totalUsers}`;
+            if (activeCountEl) activeCountEl.textContent = `${indicatorState.activeUsers}`;
+            button.setAttribute('title', `Connected • ${indicatorState.latencyMs}ms • ${indicatorState.totalUsers} installed • ${indicatorState.activeUsers} viewing`);
             break;
 
         case 'connecting':
@@ -175,10 +188,13 @@ function getTooltipContent(): string {
                     </div>
                     <div style="display:flex;gap:12px;color:rgba(255,255,255,0.7);">
                         <span>Ping: <b style="color:#fff">${indicatorState.latencyMs}ms</b></span>
-                        <span>Online: <b style="color:#fff">${indicatorState.activeUsers}</b></span>
+                    </div>
+                    <div style="display:flex;gap:12px;color:rgba(255,255,255,0.7);">
+                        <span>Installed: <b style="color:#fff">${indicatorState.totalUsers}</b></span>
+                        <span>Viewing: <b style="color:#1db954">${indicatorState.activeUsers}</b></span>
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.5);border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">
-                        Users with SLT installed. No personal data collected.
+                        No personal data collected.
                     </div>
                 </div>
             `;
@@ -239,7 +255,8 @@ async function sendHeartbeat(): Promise<boolean> {
         const params = new URLSearchParams({
             action: 'heartbeat',
             session: indicatorState.sessionId || '',
-            version: storage.get('extension-version') || '1.0.0'
+            version: storage.get('extension-version') || '1.0.0',
+            active: indicatorState.isViewingLyrics ? 'true' : 'false'
         });
 
         const response = await fetchWithTimeout(`${API_BASE}?${params}`);
@@ -252,6 +269,7 @@ async function sendHeartbeat(): Promise<boolean> {
         
         if (data.success) {
             indicatorState.sessionId = data.sessionId || indicatorState.sessionId;
+            indicatorState.totalUsers = data.totalUsers || 0;
             indicatorState.activeUsers = data.activeUsers || 0;
             indicatorState.region = data.region || '';
             indicatorState.lastHeartbeat = Date.now();
@@ -294,6 +312,7 @@ async function connect(): Promise<boolean> {
         
         if (data.success) {
             indicatorState.sessionId = data.sessionId;
+            indicatorState.totalUsers = data.totalUsers || 0;
             indicatorState.activeUsers = data.activeUsers || 0;
             indicatorState.region = data.region || '';
             indicatorState.state = 'connected';
@@ -566,9 +585,24 @@ export async function refreshConnection(): Promise<void> {
     }
 }
 
+/**
+ * Set whether user is actively viewing lyrics
+ * This updates the active status on the server
+ */
+export function setViewingLyrics(isViewing: boolean): void {
+    if (indicatorState.isViewingLyrics !== isViewing) {
+        indicatorState.isViewingLyrics = isViewing;
+        // Send immediate heartbeat to update active status
+        if (indicatorState.state === 'connected') {
+            sendHeartbeat().then(() => updateUI());
+        }
+    }
+}
+
 export default {
     init: initConnectionIndicator,
     cleanup: cleanupConnectionIndicator,
     getState: getConnectionState,
-    refresh: refreshConnection
+    refresh: refreshConnection,
+    setViewingLyrics: setViewingLyrics
 };

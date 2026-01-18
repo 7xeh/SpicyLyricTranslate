@@ -11,7 +11,7 @@ import { storage } from './utils/storage';
 import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
 import { injectStyles } from './styles/main';
 import { checkForUpdates, startUpdateChecker, getUpdateInfo, getCurrentVersion, VERSION, REPO_URL } from './utils/updater';
-import { initConnectionIndicator, getConnectionState, refreshConnection } from './utils/connectivity';
+import { initConnectionIndicator, getConnectionState, refreshConnection, setViewingLyrics } from './utils/connectivity';
 
 // Extension state
 interface ExtensionState {
@@ -1218,6 +1218,9 @@ function setupLyricsObserver(): void {
 async function onSpicyLyricsOpen(): Promise<void> {
     console.log('[SpicyLyricTranslater] Lyrics view detected, initializing...');
     
+    // Mark user as actively viewing lyrics
+    setViewingLyrics(true);
+    
     // Wait for ViewControls to be available - try multiple selectors including PIP
     let viewControls = await waitForElement('#SpicyLyricsPage .ViewControls', 3000);
     if (!viewControls) {
@@ -1290,6 +1293,9 @@ function injectStylesIntoPIP(): void {
  * Handle Spicy Lyrics page close
  */
 function onSpicyLyricsClose(): void {
+    // Mark user as no longer actively viewing lyrics
+    setViewingLyrics(false);
+    
     if (viewControlsObserver) {
         viewControlsObserver.disconnect();
         viewControlsObserver = null;
@@ -1301,7 +1307,6 @@ function onSpicyLyricsClose(): void {
     }
     
     // Connection indicator stays visible in top left bar
-    // (tracks installed users, not just active viewers)
 }
 
 /**

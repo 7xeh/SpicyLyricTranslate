@@ -937,7 +937,7 @@ var SpicyLyricTranslater = (() => {
 .slt-ci-button:hover {
     background: rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    max-width: 120px;
+    max-width: 180px;
     padding: 6px 10px;
     gap: 8px;
 }
@@ -1000,7 +1000,7 @@ var SpicyLyricTranslater = (() => {
 
 .slt-ci-button:hover .slt-ci-expanded {
     opacity: 1;
-    max-width: 100px;
+    max-width: 160px;
 }
 
 .slt-ci-stats-row {
@@ -1033,6 +1033,16 @@ var SpicyLyricTranslater = (() => {
 .slt-ci-users-count svg {
     color: var(--spice-subtext, #b3b3b3);
     opacity: 0.7;
+}
+
+/* Active viewers count - green highlight */
+.slt-ci-users-count.slt-ci-active .slt-ci-active-count {
+    color: #1db954;
+}
+
+.slt-ci-users-count.slt-ci-active svg {
+    color: #1db954;
+    opacity: 0.9;
 }
 `;
   function injectStyles() {
@@ -1638,7 +1648,9 @@ var SpicyLyricTranslater = (() => {
     state: "disconnected",
     sessionId: null,
     latencyMs: null,
+    totalUsers: 0,
     activeUsers: 0,
+    isViewingLyrics: false,
     region: "",
     lastHeartbeat: 0,
     isInitialized: false
@@ -1666,11 +1678,18 @@ var SpicyLyricTranslater = (() => {
                 <div class="slt-ci-stats-row">
                     <span class="slt-ci-ping">--ms</span>
                     <span class="slt-ci-divider">\u2022</span>
-                    <span class="slt-ci-users-count">
+                    <span class="slt-ci-users-count slt-ci-total" title="Total installed">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                         </svg>
-                        <span>0</span>
+                        <span class="slt-ci-total-count">0</span>
+                    </span>
+                    <span class="slt-ci-divider">\u2022</span>
+                    <span class="slt-ci-users-count slt-ci-active" title="Viewing lyrics">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        </svg>
+                        <span class="slt-ci-active-count">0</span>
                     </span>
                 </div>
             </div>
@@ -1684,7 +1703,8 @@ var SpicyLyricTranslater = (() => {
     const button = containerElement.querySelector(".slt-ci-button");
     const dot = containerElement.querySelector(".slt-ci-dot");
     const pingEl = containerElement.querySelector(".slt-ci-ping");
-    const usersCountEl = containerElement.querySelector(".slt-ci-users-count span");
+    const totalCountEl = containerElement.querySelector(".slt-ci-total-count");
+    const activeCountEl = containerElement.querySelector(".slt-ci-active-count");
     if (!button || !dot)
       return;
     dot.classList.remove("slt-ci-connecting", "slt-ci-connected", "slt-ci-error", "slt-ci-great", "slt-ci-ok", "slt-ci-bad", "slt-ci-horrible");
@@ -1696,9 +1716,11 @@ var SpicyLyricTranslater = (() => {
           if (pingEl)
             pingEl.textContent = `${indicatorState.latencyMs}ms`;
         }
-        if (usersCountEl)
-          usersCountEl.textContent = `${indicatorState.activeUsers}`;
-        button.setAttribute("title", `Connected \u2022 ${indicatorState.latencyMs}ms \u2022 ${indicatorState.activeUsers} online`);
+        if (totalCountEl)
+          totalCountEl.textContent = `${indicatorState.totalUsers}`;
+        if (activeCountEl)
+          activeCountEl.textContent = `${indicatorState.activeUsers}`;
+        button.setAttribute("title", `Connected \u2022 ${indicatorState.latencyMs}ms \u2022 ${indicatorState.totalUsers} installed \u2022 ${indicatorState.activeUsers} viewing`);
         break;
       case "connecting":
       case "reconnecting":
@@ -1745,10 +1767,13 @@ var SpicyLyricTranslater = (() => {
                     </div>
                     <div style="display:flex;gap:12px;color:rgba(255,255,255,0.7);">
                         <span>Ping: <b style="color:#fff">${indicatorState.latencyMs}ms</b></span>
-                        <span>Online: <b style="color:#fff">${indicatorState.activeUsers}</b></span>
+                    </div>
+                    <div style="display:flex;gap:12px;color:rgba(255,255,255,0.7);">
+                        <span>Installed: <b style="color:#fff">${indicatorState.totalUsers}</b></span>
+                        <span>Viewing: <b style="color:#1db954">${indicatorState.activeUsers}</b></span>
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.5);border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">
-                        Users with SLT installed. No personal data collected.
+                        No personal data collected.
                     </div>
                 </div>
             `;
@@ -1795,7 +1820,8 @@ var SpicyLyricTranslater = (() => {
       const params = new URLSearchParams({
         action: "heartbeat",
         session: indicatorState.sessionId || "",
-        version: storage.get("extension-version") || "1.0.0"
+        version: storage.get("extension-version") || "1.0.0",
+        active: indicatorState.isViewingLyrics ? "true" : "false"
       });
       const response = await fetchWithTimeout(`${API_BASE}?${params}`);
       if (!response.ok) {
@@ -1804,6 +1830,7 @@ var SpicyLyricTranslater = (() => {
       const data = await response.json();
       if (data.success) {
         indicatorState.sessionId = data.sessionId || indicatorState.sessionId;
+        indicatorState.totalUsers = data.totalUsers || 0;
         indicatorState.activeUsers = data.activeUsers || 0;
         indicatorState.region = data.region || "";
         indicatorState.lastHeartbeat = Date.now();
@@ -1834,6 +1861,7 @@ var SpicyLyricTranslater = (() => {
       const data = await response.json();
       if (data.success) {
         indicatorState.sessionId = data.sessionId;
+        indicatorState.totalUsers = data.totalUsers || 0;
         indicatorState.activeUsers = data.activeUsers || 0;
         indicatorState.region = data.region || "";
         indicatorState.state = "connected";
@@ -2008,6 +2036,14 @@ var SpicyLyricTranslater = (() => {
     await connect();
     if (indicatorState.state === "connected") {
       startPeriodicChecks();
+    }
+  }
+  function setViewingLyrics(isViewing) {
+    if (indicatorState.isViewingLyrics !== isViewing) {
+      indicatorState.isViewingLyrics = isViewing;
+      if (indicatorState.state === "connected") {
+        sendHeartbeat().then(() => updateUI());
+      }
     }
   }
 
@@ -2834,6 +2870,7 @@ var SpicyLyricTranslater = (() => {
   }
   async function onSpicyLyricsOpen() {
     console.log("[SpicyLyricTranslater] Lyrics view detected, initializing...");
+    setViewingLyrics(true);
     let viewControls = await waitForElement("#SpicyLyricsPage .ViewControls", 3e3);
     if (!viewControls) {
       viewControls = await waitForElement(".spicy-pip-wrapper .ViewControls", 3e3);
@@ -2884,6 +2921,7 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function onSpicyLyricsClose() {
+    setViewingLyrics(false);
     if (viewControlsObserver) {
       viewControlsObserver.disconnect();
       viewControlsObserver = null;

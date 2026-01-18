@@ -911,9 +911,12 @@ var SpicyLyricTranslater = (() => {
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - minimal button design */
+/* Main container - positioned in top left */
 .SLT_ConnectionIndicator {
-    margin-left: 8px;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 9999;
     display: flex;
     align-items: center;
 }
@@ -1044,7 +1047,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = true ? "1.4.5" : "0.0.0";
+  var CURRENT_VERSION = true ? "1.4.6" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -1745,7 +1748,7 @@ var SpicyLyricTranslater = (() => {
                         <span>Online: <b style="color:#fff">${indicatorState.activeUsers}</b></span>
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.5);border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">
-                        Tracking active users only. No personal data collected.
+                        Users with SLT installed. No personal data collected.
                     </div>
                 </div>
             `;
@@ -1921,17 +1924,21 @@ var SpicyLyricTranslater = (() => {
     jitterInterval = setInterval(applyJitter, 1e3);
   }
   function getIndicatorContainer() {
-    const topbarGrid = document.querySelector(".search-searchCategory-categoryGrid");
-    if (topbarGrid)
-      return topbarGrid;
-    const viewControls = document.querySelector("#SpicyLyricsPage .ViewControls");
-    if (viewControls) {
-      console.log("[SpicyLyricTranslater] Found ViewControls for connection indicator");
-      return viewControls;
+    const rootTop = document.querySelector(".Root__top-container");
+    if (rootTop) {
+      console.log("[SpicyLyricTranslater] Found Root__top-container for connection indicator");
+      return rootTop;
     }
-    const altContainer = document.querySelector(".oXVR9i6RwBlxmTHoe7ZP");
-    if (altContainer)
-      return altContainer;
+    const globalNav = document.querySelector('[data-testid="global-nav"]');
+    if (globalNav) {
+      console.log("[SpicyLyricTranslater] Found global-nav for connection indicator");
+      return globalNav;
+    }
+    const topBar = document.querySelector(".Root__top-bar") || document.querySelector(".main-topBar-container");
+    if (topBar) {
+      console.log("[SpicyLyricTranslater] Found top-bar for connection indicator");
+      return topBar;
+    }
     console.log("[SpicyLyricTranslater] No container found for connection indicator");
     return null;
   }
@@ -1946,12 +1953,6 @@ var SpicyLyricTranslater = (() => {
     containerElement = createIndicatorElement();
     targetContainer.appendChild(containerElement);
     return true;
-  }
-  function removeFromDOM() {
-    if (containerElement && containerElement.parentNode) {
-      containerElement.parentNode.removeChild(containerElement);
-    }
-    containerElement = null;
   }
   async function initConnectionIndicator() {
     if (indicatorState.isInitialized)
@@ -1998,11 +1999,6 @@ var SpicyLyricTranslater = (() => {
     window.addEventListener("beforeunload", () => {
       disconnect();
     });
-  }
-  function cleanupConnectionIndicator() {
-    disconnect();
-    removeFromDOM();
-    indicatorState.isInitialized = false;
   }
   function getConnectionState() {
     return { ...indicatorState };
@@ -2859,7 +2855,6 @@ var SpicyLyricTranslater = (() => {
       insertTranslateButton();
       injectStylesIntoPIP();
       setupViewControlsObserver();
-      initConnectionIndicator();
     } else {
       console.log("[SpicyLyricTranslater] ViewControls not found, will retry...");
     }
@@ -2897,7 +2892,6 @@ var SpicyLyricTranslater = (() => {
       lyricsObserver.disconnect();
       lyricsObserver = null;
     }
-    cleanupConnectionIndicator();
   }
   async function registerSettingsMenu() {
     while (!Spicetify.React || !Spicetify.ReactDOM) {
@@ -3099,6 +3093,7 @@ var SpicyLyricTranslater = (() => {
     state.customApiUrl = storage.get("custom-api-url") || "";
     setPreferredApi(state.preferredApi, state.customApiUrl);
     injectStyles();
+    initConnectionIndicator();
     registerSettingsMenu();
     startUpdateChecker(30 * 60 * 1e3);
     setupKeyboardShortcut();

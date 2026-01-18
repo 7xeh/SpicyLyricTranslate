@@ -220,9 +220,12 @@ export const styles = `
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - minimal button design */
+/* Main container - positioned in top left */
 .SLT_ConnectionIndicator {
-    margin-left: 8px;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 9999;
     display: flex;
     align-items: center;
 }

@@ -11,7 +11,7 @@ import { storage } from './utils/storage';
 import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
 import { injectStyles } from './styles/main';
 import { checkForUpdates, startUpdateChecker, getUpdateInfo, getCurrentVersion, VERSION, REPO_URL } from './utils/updater';
-import { initConnectionIndicator, cleanupConnectionIndicator, getConnectionState, refreshConnection } from './utils/connectivity';
+import { initConnectionIndicator, getConnectionState, refreshConnection } from './utils/connectivity';
 
 // Extension state
 interface ExtensionState {
@@ -1246,8 +1246,6 @@ async function onSpicyLyricsOpen(): Promise<void> {
         injectStylesIntoPIP();
         // Setup observers
         setupViewControlsObserver();
-        // Initialize connection indicator for active user count
-        initConnectionIndicator();
     } else {
         console.log('[SpicyLyricTranslater] ViewControls not found, will retry...');
     }
@@ -1302,8 +1300,8 @@ function onSpicyLyricsClose(): void {
         lyricsObserver = null;
     }
     
-    // Cleanup connection indicator
-    cleanupConnectionIndicator();
+    // Connection indicator stays visible in top left bar
+    // (tracks installed users, not just active viewers)
 }
 
 /**
@@ -1597,6 +1595,10 @@ async function initialize(): Promise<void> {
     
     // Inject styles
     injectStyles();
+    
+    // Initialize connection indicator (always visible in top left)
+    // This tracks users who have the extension installed, not just active viewers
+    initConnectionIndicator();
     
     // Register settings menu
     registerSettingsMenu();

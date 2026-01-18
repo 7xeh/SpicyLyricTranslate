@@ -178,7 +178,7 @@ function getTooltipContent(): string {
                         <span>Online: <b style="color:#fff">${indicatorState.activeUsers}</b></span>
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.5);border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">
-                        Tracking active users only. No personal data collected.
+                        Users with SLT installed. No personal data collected.
                     </div>
                 </div>
             `;
@@ -418,22 +418,29 @@ function startPeriodicChecks(): void {
 
 /**
  * Get the container where the indicator should be placed
+ * Places indicator in the top left title bar, always visible
  */
 function getIndicatorContainer(): HTMLElement | null {
-    // Alternative: Spicy Lyrics topbar area
-    const topbarGrid = document.querySelector('.search-searchCategory-categoryGrid');
-    if (topbarGrid) return topbarGrid as HTMLElement;
-
-    // Primary: ViewControls in Spicy Lyrics (same place as translate button)
-    const viewControls = document.querySelector('#SpicyLyricsPage .ViewControls');
-    if (viewControls) {
-        console.log('[SpicyLyricTranslater] Found ViewControls for connection indicator');
-        return viewControls as HTMLElement;
+    // Primary: Root top container (always visible in top left)
+    const rootTop = document.querySelector('.Root__top-container');
+    if (rootTop) {
+        console.log('[SpicyLyricTranslater] Found Root__top-container for connection indicator');
+        return rootTop as HTMLElement;
     }
 
-    // Alternative: class-based container
-    const altContainer = document.querySelector('.oXVR9i6RwBlxmTHoe7ZP');
-    if (altContainer) return altContainer as HTMLElement;
+    // Alternative: Global nav bar
+    const globalNav = document.querySelector('[data-testid="global-nav"]');
+    if (globalNav) {
+        console.log('[SpicyLyricTranslater] Found global-nav for connection indicator');
+        return globalNav as HTMLElement;
+    }
+
+    // Fallback: Top bar area
+    const topBar = document.querySelector('.Root__top-bar') || document.querySelector('.main-topBar-container');
+    if (topBar) {
+        console.log('[SpicyLyricTranslater] Found top-bar for connection indicator');
+        return topBar as HTMLElement;
+    }
 
     console.log('[SpicyLyricTranslater] No container found for connection indicator');
     return null;

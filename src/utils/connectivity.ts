@@ -420,18 +420,22 @@ function startPeriodicChecks(): void {
  * Get the container where the indicator should be placed
  */
 function getIndicatorContainer(): HTMLElement | null {
-    // Try to find the Spicy Lyrics topbar area
+    // Alternative: Spicy Lyrics topbar area
     const topbarGrid = document.querySelector('.search-searchCategory-categoryGrid');
     if (topbarGrid) return topbarGrid as HTMLElement;
 
-    // Alternative containers
+    // Primary: ViewControls in Spicy Lyrics (same place as translate button)
+    const viewControls = document.querySelector('#SpicyLyricsPage .ViewControls');
+    if (viewControls) {
+        console.log('[SpicyLyricTranslater] Found ViewControls for connection indicator');
+        return viewControls as HTMLElement;
+    }
+
+    // Alternative: class-based container
     const altContainer = document.querySelector('.oXVR9i6RwBlxmTHoe7ZP');
     if (altContainer) return altContainer as HTMLElement;
 
-    // Fallback to view controls area in Spicy Lyrics
-    const viewControls = document.querySelector('#SpicyLyricsPage .ViewControls');
-    if (viewControls) return viewControls as HTMLElement;
-
+    console.log('[SpicyLyricTranslater] No container found for connection indicator');
     return null;
 }
 

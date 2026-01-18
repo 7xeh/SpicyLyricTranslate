@@ -9,7 +9,8 @@ var SpicyLyricTranslater = (() => {
   var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
     get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
   }) : x)(function(x) {
-    if (typeof require !== "undefined") return require.apply(this, arguments);
+    if (typeof require !== "undefined")
+      return require.apply(this, arguments);
     throw Error('Dynamic require of "' + x + '" is not supported');
   });
   var __export = (target, all) => {
@@ -93,7 +94,8 @@ var SpicyLyricTranslater = (() => {
   var storage = {
     get(key) {
       try {
-        if (!isLocalStorageAvailable()) return null;
+        if (!isLocalStorageAvailable())
+          return null;
         return localStorage.getItem(STORAGE_PREFIX + key);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage get error:", e);
@@ -102,7 +104,8 @@ var SpicyLyricTranslater = (() => {
     },
     set(key, value) {
       try {
-        if (!isLocalStorageAvailable()) return false;
+        if (!isLocalStorageAvailable())
+          return false;
         if (value.length > 1e4) {
           const currentSize = getStorageSize();
           if (currentSize + value.length * 2 > MAX_STORAGE_SIZE_BYTES) {
@@ -129,7 +132,8 @@ var SpicyLyricTranslater = (() => {
     },
     remove(key) {
       try {
-        if (!isLocalStorageAvailable()) return;
+        if (!isLocalStorageAvailable())
+          return;
         localStorage.removeItem(STORAGE_PREFIX + key);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage remove error:", e);
@@ -138,7 +142,8 @@ var SpicyLyricTranslater = (() => {
     getJSON(key, defaultValue) {
       try {
         const value = this.get(key);
-        if (value === null) return defaultValue;
+        if (value === null)
+          return defaultValue;
         return JSON.parse(value);
       } catch (e) {
         console.error("[SpicyLyricTranslater] Storage getJSON error:", e);
@@ -360,12 +365,13 @@ var SpicyLyricTranslater = (() => {
     }
     return null;
   }
-  function cacheTranslation(text, targetLang, translation) {
+  function cacheTranslation(text, targetLang, translation, api) {
     const cache = storage_default.getJSON("translation-cache", {});
     const key = `${targetLang}:${text}`;
     cache[key] = {
       translation,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      api
     };
     const keys = Object.keys(cache);
     if (keys.length > MAX_CACHE_ENTRIES) {
@@ -470,7 +476,8 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function isSameLanguage(detected, target) {
-    if (!detected || detected === "unknown") return false;
+    if (!detected || detected === "unknown")
+      return false;
     const normalizedDetected = detected.toLowerCase().split("-")[0];
     const normalizedTarget = target.toLowerCase().split("-")[0];
     return normalizedDetected === normalizedTarget;
@@ -501,22 +508,22 @@ var SpicyLyricTranslater = (() => {
     switch (preferredApi) {
       case "libretranslate":
         primaryApi = tryLibreTranslate;
-        fallbackApis = [tryGoogle];
+        fallbackApis = [{ name: "google", fn: tryGoogle }];
         break;
       case "custom":
         primaryApi = tryCustom;
-        fallbackApis = [tryGoogle, tryLibreTranslate];
+        fallbackApis = [{ name: "google", fn: tryGoogle }, { name: "libretranslate", fn: tryLibreTranslate }];
         break;
       case "google":
       default:
         primaryApi = tryGoogle;
-        fallbackApis = [tryLibreTranslate];
+        fallbackApis = [{ name: "libretranslate", fn: tryLibreTranslate }];
         break;
     }
     try {
       const result = await primaryApi();
       if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-        cacheTranslation(text, targetLang, text);
+        cacheTranslation(text, targetLang, text, preferredApi);
         return {
           originalText: text,
           translatedText: text,
@@ -525,7 +532,7 @@ var SpicyLyricTranslater = (() => {
           wasTranslated: false
         };
       }
-      cacheTranslation(text, targetLang, result.translation);
+      cacheTranslation(text, targetLang, result.translation, preferredApi);
       return {
         originalText: text,
         translatedText: result.translation,
@@ -537,9 +544,9 @@ var SpicyLyricTranslater = (() => {
       console.warn(`[SpicyLyricTranslater] Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
       for (const fallbackApi of fallbackApis) {
         try {
-          const result = await fallbackApi();
+          const result = await fallbackApi.fn();
           if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-            cacheTranslation(text, targetLang, text);
+            cacheTranslation(text, targetLang, text, fallbackApi.name);
             return {
               originalText: text,
               translatedText: text,
@@ -548,7 +555,7 @@ var SpicyLyricTranslater = (() => {
               wasTranslated: false
             };
           }
-          cacheTranslation(text, targetLang, result.translation);
+          cacheTranslation(text, targetLang, result.translation, fallbackApi.name);
           return {
             originalText: text,
             translatedText: result.translation,
@@ -557,7 +564,7 @@ var SpicyLyricTranslater = (() => {
             wasTranslated: true
           };
         } catch (fallbackError) {
-          console.warn("[SpicyLyricTranslater] Fallback API failed:", fallbackError);
+          console.warn(`[SpicyLyricTranslater] Fallback API (${fallbackApi.name}) failed:`, fallbackError);
           continue;
         }
       }
@@ -657,7 +664,8 @@ var SpicyLyricTranslater = (() => {
         original,
         translated: cache[key].translation,
         language: lang,
-        date: new Date(cache[key].timestamp)
+        date: new Date(cache[key].timestamp),
+        api: cache[key].api
       });
     }
     entries.sort((a, b) => b.date.getTime() - a.date.getTime());
@@ -695,6 +703,21 @@ var SpicyLyricTranslater = (() => {
 /* Active state for translate button */
 #TranslateToggle.active svg {
     color: var(--spice-button-active, #1db954);
+}
+
+/* Error state for translate button */
+#TranslateToggle.error svg {
+    color: #e74c3c;
+}
+
+#TranslateToggle.error {
+    animation: spicy-translate-shake 0.5s ease-in-out;
+}
+
+@keyframes spicy-translate-shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-3px); }
+    40%, 80% { transform: translateX(3px); }
 }
 
 /* Settings modal styles - these are in our own modal */
@@ -878,7 +901,7 @@ var SpicyLyricTranslater = (() => {
   }
 
   // src/utils/updater.ts
-  var CURRENT_VERSION = "1.4.1";
+  var CURRENT_VERSION = true ? "1.4.3" : "0.0.0";
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
   var GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
   var RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -1089,7 +1112,8 @@ var SpicyLyricTranslater = (() => {
     }
     try {
       const latest = await getLatestVersion();
-      if (!latest) return;
+      if (!latest)
+        return;
       const current = getCurrentVersion();
       if (compareVersions(latest.version, current) > 0) {
         console.log(`[SpicyLyricTranslater] Update available: ${current.text} \u2192 ${latest.version.text}`);
@@ -1154,14 +1178,16 @@ var SpicyLyricTranslater = (() => {
   var viewControlsObserver = null;
   var lyricsObserver = null;
   function formatBytes(bytes) {
-    if (bytes === 0) return "0 B";
+    if (bytes === 0)
+      return "0 B";
     const k = 1024;
     const sizes = ["B", "KB", "MB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   }
   function truncateText(text, maxLength) {
-    if (text.length <= maxLength) return text;
+    if (text.length <= maxLength)
+      return text;
     return text.substring(0, maxLength - 3) + "...";
   }
   function waitForElement(selector, timeout = 1e4) {
@@ -1195,7 +1221,8 @@ var SpicyLyricTranslater = (() => {
     const pipWindow = getPIPWindow();
     if (pipWindow) {
       const pipViewControls = pipWindow.document.querySelector("#SpicyLyricsPage .ViewControls");
-      if (pipViewControls) return pipViewControls;
+      if (pipViewControls)
+        return pipViewControls;
     }
     return document.querySelector("#SpicyLyricsPage .ViewControls") || document.querySelector(".Cinema--Container .ViewControls") || document.querySelector(".spicy-pip-wrapper .ViewControls") || document.querySelector(".ViewControls");
   }
@@ -1213,7 +1240,8 @@ var SpicyLyricTranslater = (() => {
     const pipWindow = getPIPWindow();
     if (pipWindow) {
       const pipContent = pipWindow.document.querySelector("#SpicyLyricsPage .LyricsContent") || pipWindow.document.querySelector(".LyricsContainer .LyricsContent");
-      if (pipContent) return pipContent;
+      if (pipContent)
+        return pipContent;
     }
     return document.querySelector("#SpicyLyricsPage .LyricsContent") || document.querySelector(".spicy-pip-wrapper .LyricsContent") || document.querySelector(".Cinema--Container .LyricsContent") || document.querySelector(".LyricsContainer .LyricsContent") || document.querySelector(".LyricsContent");
   }
@@ -1257,8 +1285,10 @@ var SpicyLyricTranslater = (() => {
   }
   function insertTranslateButtonIntoDocument(doc) {
     const viewControls = doc.querySelector("#SpicyLyricsPage .ViewControls") || doc.querySelector(".ViewControls");
-    if (!viewControls) return;
-    if (viewControls.querySelector("#TranslateToggle")) return;
+    if (!viewControls)
+      return;
+    if (viewControls.querySelector("#TranslateToggle"))
+      return;
     const romanizeButton = viewControls.querySelector("#RomanizationToggle");
     const translateButton = createTranslateButton();
     if (romanizeButton) {
@@ -1295,6 +1325,7 @@ var SpicyLyricTranslater = (() => {
     const button = document.querySelector("#TranslateToggle");
     if (button) {
       button.classList.remove("loading");
+      button.classList.remove("error");
       button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
     }
     const pipWindow = getPIPWindow();
@@ -1302,7 +1333,21 @@ var SpicyLyricTranslater = (() => {
       const pipButton = pipWindow.document.querySelector("#TranslateToggle");
       if (pipButton) {
         pipButton.classList.remove("loading");
+        pipButton.classList.remove("error");
         pipButton.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+      }
+    }
+  }
+  function setButtonErrorState(hasError) {
+    const button = document.querySelector("#TranslateToggle");
+    if (button) {
+      button.classList.toggle("error", hasError);
+    }
+    const pipWindow = getPIPWindow();
+    if (pipWindow) {
+      const pipButton = pipWindow.document.querySelector("#TranslateToggle");
+      if (pipButton) {
+        pipButton.classList.toggle("error", hasError);
       }
     }
   }
@@ -1400,12 +1445,14 @@ var SpicyLyricTranslater = (() => {
     const wordElements = lineElement.querySelectorAll(".word:not(.dot)");
     if (wordElements.length > 0) {
       const text2 = Array.from(wordElements).map((word) => word.textContent?.trim() || "").filter((t) => t.length > 0 && t !== "\u2022").join(" ").trim();
-      if (text2) return text2;
+      if (text2)
+        return text2;
     }
     const syllableElements = lineElement.querySelectorAll(".syllable");
     if (syllableElements.length > 0) {
       const text2 = Array.from(syllableElements).map((syl) => syl.textContent?.trim() || "").filter((t) => t.length > 0).join("").trim();
-      if (text2) return text2;
+      if (text2)
+        return text2;
     }
     const text = lineElement.textContent?.trim() || "";
     if (/^[•\s]+$/.test(text)) {
@@ -1493,6 +1540,8 @@ var SpicyLyricTranslater = (() => {
       if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
         Spicetify.showNotification("Translation failed. Please try again.", true);
       }
+      setButtonErrorState(true);
+      setTimeout(() => setButtonErrorState(false), 3e3);
     } finally {
       state.isTranslating = false;
       restoreButtonState();
@@ -1531,6 +1580,22 @@ var SpicyLyricTranslater = (() => {
         translationSpan.className = "spicy-translation-container spicy-translation-text";
         translationSpan.textContent = translatedText;
         line.appendChild(translationSpan);
+      }
+    });
+    correctLyricsScroll();
+  }
+  function correctLyricsScroll() {
+    requestAnimationFrame(() => {
+      const activeLine = document.querySelector(".LyricsContent .line.active, .LyricsContent .line.current") || document.querySelector(".LyricsContainer .line.active, .LyricsContainer .line.current");
+      if (activeLine) {
+        activeLine.scrollIntoView({ behavior: "auto", block: "center" });
+      }
+      const pipWindow = getPIPWindow();
+      if (pipWindow) {
+        const pipActiveLine = pipWindow.document.querySelector(".LyricsContent .line.active, .LyricsContent .line.current") || pipWindow.document.querySelector(".LyricsContainer .line.active, .LyricsContainer .line.current");
+        if (pipActiveLine) {
+          pipActiveLine.scrollIntoView({ behavior: "auto", block: "center" });
+        }
       }
     });
   }
@@ -1794,7 +1859,7 @@ var SpicyLyricTranslater = (() => {
             <div class="cache-item" data-index="${index}" style="padding: 8px 0; border-bottom: 1px solid var(--spice-misc, #535353);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} \u2022 ${item.date.toLocaleDateString()}</div>
+                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} \u2022 ${item.api ? item.api.toUpperCase() + " \u2022 " : ""}${item.date.toLocaleDateString()}</div>
                         <div style="font-size: 13px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.original}">${truncateText(item.original, 40)}</div>
                         <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.translated}">${truncateText(item.translated, 40)}</div>
                     </div>
@@ -1888,7 +1953,8 @@ var SpicyLyricTranslater = (() => {
       lyricsObserver.disconnect();
     }
     lyricsObserver = new MutationObserver((mutations) => {
-      if (!state.isEnabled || state.isTranslating) return;
+      if (!state.isEnabled || state.isTranslating)
+        return;
       const hasNewContent = mutations.some(
         (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
           (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
@@ -1953,8 +2019,10 @@ var SpicyLyricTranslater = (() => {
   }
   function injectStylesIntoPIP() {
     const pipWindow = getPIPWindow();
-    if (!pipWindow) return;
-    if (pipWindow.document.getElementById("spicy-lyric-translater-styles")) return;
+    if (!pipWindow)
+      return;
+    if (pipWindow.document.getElementById("spicy-lyric-translater-styles"))
+      return;
     const mainStyles = document.getElementById("spicy-lyric-translater-styles");
     if (mainStyles) {
       const pipStyles = pipWindow.document.createElement("style");
@@ -2031,11 +2099,14 @@ var SpicyLyricTranslater = (() => {
       console.log("[SpicyLyricTranslater] Lyrics view already open");
       onSpicyLyricsOpen();
     }
+    const mainView = document.querySelector(".Root__main-view") || document.body;
+    const observerTarget = mainView;
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "childList") {
           const isLyricsNode = (node) => {
-            if (node.nodeType !== Node.ELEMENT_NODE) return false;
+            if (node.nodeType !== Node.ELEMENT_NODE)
+              return false;
             const el = node;
             return el.id === "SpicyLyricsPage" || el.classList?.contains("Cinema--Container") || el.classList?.contains("spicy-lyrics-cinema") || el.classList?.contains("spicy-pip-wrapper") || !!el.querySelector("#SpicyLyricsPage") || !!el.querySelector(".Cinema--Container") || !!el.querySelector(".spicy-pip-wrapper");
           };
@@ -2052,15 +2123,17 @@ var SpicyLyricTranslater = (() => {
         }
       }
     });
-    observer.observe(document.body, {
+    observer.observe(observerTarget, {
       childList: true,
       subtree: true
     });
+    console.log(`[SpicyLyricTranslater] Observer attached to ${observerTarget === document.body ? "document.body" : ".Root__main-view"}`);
     setupPIPObserver();
   }
   function setupPIPObserver() {
     const docPiP = globalThis.documentPictureInPicture;
-    if (!docPiP) return;
+    if (!docPiP)
+      return;
     docPiP.addEventListener("enter", (event) => {
       console.log("[SpicyLyricTranslater] PIP window opened");
       const pipWindow = event.window;
@@ -2086,7 +2159,8 @@ var SpicyLyricTranslater = (() => {
       return;
     }
     const pipObserver = new MutationObserver((mutations) => {
-      if (!state.isEnabled || state.isTranslating) return;
+      if (!state.isEnabled || state.isTranslating)
+        return;
       const hasNewContent = mutations.some(
         (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
           (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
@@ -2111,12 +2185,17 @@ var SpicyLyricTranslater = (() => {
       return "pip";
     }
     const page = document.querySelector("#SpicyLyricsPage");
-    if (!page) return "none";
-    if (page.classList.contains("SidebarMode")) return "sidebar";
-    if (page.classList.contains("ForcedCompactMode")) return "compact";
-    if (document.fullscreenElement) return "fullscreen";
+    if (!page)
+      return "none";
+    if (page.classList.contains("SidebarMode"))
+      return "sidebar";
+    if (page.classList.contains("ForcedCompactMode"))
+      return "compact";
+    if (document.fullscreenElement)
+      return "fullscreen";
     const isInFullscreenContainer = !!document.querySelector(".Cinema--Container #SpicyLyricsPage");
-    if (isInFullscreenContainer) return "cinema";
+    if (isInFullscreenContainer)
+      return "cinema";
     return "normal";
   }
   function setupViewModeObserver() {

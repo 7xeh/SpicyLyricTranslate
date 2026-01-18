@@ -1921,15 +1921,18 @@ var SpicyLyricTranslater = (() => {
     jitterInterval = setInterval(applyJitter, 1e3);
   }
   function getIndicatorContainer() {
+    const viewControls = document.querySelector("#SpicyLyricsPage .ViewControls");
+    if (viewControls) {
+      console.log("[SpicyLyricTranslater] Found ViewControls for connection indicator");
+      return viewControls;
+    }
     const topbarGrid = document.querySelector(".search-searchCategory-categoryGrid");
     if (topbarGrid)
       return topbarGrid;
     const altContainer = document.querySelector(".oXVR9i6RwBlxmTHoe7ZP");
     if (altContainer)
       return altContainer;
-    const viewControls = document.querySelector("#SpicyLyricsPage .ViewControls");
-    if (viewControls)
-      return viewControls;
+    console.log("[SpicyLyricTranslater] No container found for connection indicator");
     return null;
   }
   function appendToDOM() {

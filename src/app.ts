@@ -481,11 +481,43 @@ function getPIPLyricsLines(): NodeListOf<Element> | null {
 
 /**
  * Extract text from a lyrics line element
+ * Handles various Spicy Lyrics formats: word-synced, syllable-synced, letter-synced (TTML), and line-synced
  */
 function extractLineText(lineElement: Element): string {
     // Skip musical lines (dots only)
     if (lineElement.classList.contains('musical-line')) {
         return '';
+    }
+    
+    // For letter-synced TTML lyrics with letterGroup elements
+    const letterGroups = lineElement.querySelectorAll('.letterGroup');
+    if (letterGroups.length > 0) {
+        // Get text from letterGroups and standalone words
+        const parts: string[] = [];
+        const children = lineElement.children;
+        
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child.classList.contains('letterGroup')) {
+                // Extract text from letter elements
+                const letters = child.querySelectorAll('.letter');
+                const word = Array.from(letters)
+                    .map(letter => letter.textContent || '')
+                    .join('');
+                if (word) parts.push(word);
+            } else if (child.classList.contains('word') && !child.classList.contains('dot')) {
+                const text = child.textContent?.trim();
+                if (text && text !== '•') parts.push(text);
+            } else if (child.classList.contains('word-group')) {
+                // Handle word-group containers (multi-syllable words)
+                const text = child.textContent?.trim();
+                if (text && text !== '•') parts.push(text);
+            }
+        }
+        
+        if (parts.length > 0) {
+            return parts.join(' ').trim();
+        }
     }
     
     // For word-synced lyrics, check for word elements
@@ -669,11 +701,13 @@ function applyTranslations(lines: NodeListOf<Element>): void {
             line.classList.add('spicy-translated');
             
             // Hide original content completely, show only translation
-            // Get all direct content elements (words, syllables, or text nodes)
-            const contentElements = line.querySelectorAll('.word, .syllable');
+            // Get all direct content elements (words, syllables, letterGroups, word-groups, or text nodes)
+            // This handles all Spicy Lyrics formats including custom TTML with letter-synced lyrics
+            const contentElements = line.querySelectorAll('.word, .syllable, .letterGroup, .word-group, .letter');
             
             if (contentElements.length > 0) {
-                // Hide all word/syllable elements
+                // Hide all content elements
+                // For TTML, we need to hide letterGroups (which contain letters) and standalone words
                 contentElements.forEach((el) => {
                     (el as HTMLElement).classList.add('spicy-hidden-original');
                 });
@@ -759,7 +793,7 @@ function restoreLineText(line: Element): void {
         const originalContent = wrapper.innerHTML;
         wrapper.remove();
         // Only restore if line is now empty
-        if (line.innerHTML.trim() === '' || !line.querySelector('.word, .syllable')) {
+        if (line.innerHTML.trim() === '' || !line.querySelector('.word, .syllable, .letterGroup, .letter')) {
             line.innerHTML = originalContent;
         }
     }
@@ -804,7 +838,7 @@ function removeTranslations(): void {
             if (parent) {
                 const originalContent = wrapper.innerHTML;
                 wrapper.remove();
-                if (parent.innerHTML.trim() === '' || !parent.querySelector('.word, .syllable')) {
+                if (parent.innerHTML.trim() === '' || !parent.querySelector('.word, .syllable, .letterGroup, .letter')) {
                     parent.innerHTML = originalContent;
                 }
             }

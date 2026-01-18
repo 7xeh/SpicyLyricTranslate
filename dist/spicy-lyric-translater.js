@@ -2215,6 +2215,31 @@ var SpicyLyricTranslater = (() => {
     if (lineElement.classList.contains("musical-line")) {
       return "";
     }
+    const letterGroups = lineElement.querySelectorAll(".letterGroup");
+    if (letterGroups.length > 0) {
+      const parts = [];
+      const children = lineElement.children;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child.classList.contains("letterGroup")) {
+          const letters = child.querySelectorAll(".letter");
+          const word = Array.from(letters).map((letter) => letter.textContent || "").join("");
+          if (word)
+            parts.push(word);
+        } else if (child.classList.contains("word") && !child.classList.contains("dot")) {
+          const text2 = child.textContent?.trim();
+          if (text2 && text2 !== "\u2022")
+            parts.push(text2);
+        } else if (child.classList.contains("word-group")) {
+          const text2 = child.textContent?.trim();
+          if (text2 && text2 !== "\u2022")
+            parts.push(text2);
+        }
+      }
+      if (parts.length > 0) {
+        return parts.join(" ").trim();
+      }
+    }
     const wordElements = lineElement.querySelectorAll(".word:not(.dot)");
     if (wordElements.length > 0) {
       const text2 = Array.from(wordElements).map((word) => word.textContent?.trim() || "").filter((t) => t.length > 0 && t !== "\u2022").join(" ").trim();
@@ -2333,7 +2358,7 @@ var SpicyLyricTranslater = (() => {
         line.dataset.originalText = originalText;
         line.dataset.lineIndex = index.toString();
         line.classList.add("spicy-translated");
-        const contentElements = line.querySelectorAll(".word, .syllable");
+        const contentElements = line.querySelectorAll(".word, .syllable, .letterGroup, .word-group, .letter");
         if (contentElements.length > 0) {
           contentElements.forEach((el) => {
             el.classList.add("spicy-hidden-original");
@@ -2383,7 +2408,7 @@ var SpicyLyricTranslater = (() => {
     if (wrapper) {
       const originalContent = wrapper.innerHTML;
       wrapper.remove();
-      if (line.innerHTML.trim() === "" || !line.querySelector(".word, .syllable")) {
+      if (line.innerHTML.trim() === "" || !line.querySelector(".word, .syllable, .letterGroup, .letter")) {
         line.innerHTML = originalContent;
       }
     }
@@ -2415,7 +2440,7 @@ var SpicyLyricTranslater = (() => {
         if (parent) {
           const originalContent = wrapper.innerHTML;
           wrapper.remove();
-          if (parent.innerHTML.trim() === "" || !parent.querySelector(".word, .syllable")) {
+          if (parent.innerHTML.trim() === "" || !parent.querySelector(".word, .syllable, .letterGroup, .letter")) {
             parent.innerHTML = originalContent;
           }
         }

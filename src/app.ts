@@ -598,7 +598,7 @@ async function translateCurrentLyrics(): Promise<void> {
 }
 
 function applyTranslations(lines: NodeListOf<Element>): void {
-    if (state.overlayMode === 'interleaved' || state.overlayMode === 'side-by-side') {
+    if (state.overlayMode === 'interleaved') {
         const translationMapByIndex = new Map<number, string>();
         lines.forEach((line, index) => {
             const originalText = extractLineText(line);
@@ -754,9 +754,9 @@ function removeTranslations(): void {
             }
         });
         
-        const translatedLines = doc.querySelectorAll('.spicy-translated, .slt-overlay-parent, .slt-side-by-side-container');
+        const translatedLines = doc.querySelectorAll('.spicy-translated, .slt-overlay-parent');
         translatedLines.forEach(line => {
-            line.classList.remove('spicy-translated', 'slt-overlay-parent', 'slt-side-by-side-container');
+            line.classList.remove('spicy-translated', 'slt-overlay-parent');
         });
         
         const wordElements = doc.querySelectorAll('.word[data-original-word]');
@@ -791,7 +791,6 @@ function showSettingsModal(): void {
     const overlayModeOptions = `
         <option value="replace" ${state.overlayMode === 'replace' ? 'selected' : ''}>Replace (default)</option>
         <option value="interleaved" ${state.overlayMode === 'interleaved' ? 'selected' : ''}>Below each line</option>
-        <option value="side-by-side" ${state.overlayMode === 'side-by-side' ? 'selected' : ''}>Side by side</option>
     `;
 
     const content = document.createElement('div');
@@ -1329,6 +1328,151 @@ async function registerSettingsMenu(): Promise<void> {
     }
 }
 
+function injectSettingsIntoSpotifySettings(): void {
+    const existingSection = document.getElementById('slt-settings-section');
+    if (existingSection) return;
+    
+    const spicyLyricsSettings = document.getElementById('spicy-lyrics-settings') || 
+                                 document.getElementById('spicy-lyrics-dev-settings');
+    
+    const settingsContainer = document.querySelector('.x-settings-container');
+    if (!settingsContainer) return;
+    
+    const targetElement = spicyLyricsSettings || settingsContainer.lastElementChild;
+    if (!targetElement) return;
+    
+    const stats = getCacheStats();
+    
+    const section = document.createElement('div');
+    section.id = 'slt-settings-section';
+    section.innerHTML = `
+        <div class="x-settings-section">
+            <h2 class="e-91000-text encore-text-body-medium-bold encore-internal-color-text-base" data-encore-id="text">Spicy Lyric Translater</h2>
+            <div class="x-settings-row">
+                <div class="x-settings-firstColumn">
+                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Target Language</label>
+                </div>
+                <div class="x-settings-secondColumn">
+                    <select class="main-dropDown-dropDown" id="slt-settings-language">
+                        ${SUPPORTED_LANGUAGES.map(l => 
+                            `<option value="${l.code}" ${l.code === state.targetLanguage ? 'selected' : ''}>${l.name}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="x-settings-row">
+                <div class="x-settings-firstColumn">
+                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Auto-Translate</label>
+                </div>
+                <div class="x-settings-secondColumn">
+                    <label class="x-toggle-wrapper">
+                        <input id="slt-settings-autotranslate" class="x-toggle-input" type="checkbox" ${state.autoTranslate ? 'checked' : ''}>
+                        <span class="x-toggle-indicatorWrapper"><span class="x-toggle-indicator"></span></span>
+                    </label>
+                </div>
+            </div>
+            <div class="x-settings-row">
+                <div class="x-settings-firstColumn">
+                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Show Notifications</label>
+                </div>
+                <div class="x-settings-secondColumn">
+                    <label class="x-toggle-wrapper">
+                        <input id="slt-settings-notifications" class="x-toggle-input" type="checkbox" ${state.showNotifications ? 'checked' : ''}>
+                        <span class="x-toggle-indicatorWrapper"><span class="x-toggle-indicator"></span></span>
+                    </label>
+                </div>
+            </div>
+            <div class="x-settings-row">
+                <div class="x-settings-firstColumn">
+                    <div>
+                        <label class="e-91000-text encore-text-body-small encore-internal-color-text-base" data-encore-id="text">Translation Cache</label>
+                        <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text" id="slt-cache-stats"> ${stats.trackCount} tracks cached (${formatBytes(stats.sizeBytes)})</label>
+                    </div>
+                </div>
+                <div class="x-settings-secondColumn">
+                    <button id="slt-settings-clear-cache" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small">Clear Cache</button>
+                </div>
+            </div>
+            <div class="x-settings-row">
+                <div class="x-settings-firstColumn">
+                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Version v${VERSION}</label>
+                </div>
+                <div class="x-settings-secondColumn">
+                    <button id="slt-settings-open-modal" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small">Open Settings</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    if (spicyLyricsSettings) {
+        spicyLyricsSettings.parentNode?.insertBefore(section, spicyLyricsSettings.nextSibling);
+    } else {
+        settingsContainer.appendChild(section);
+    }
+    
+    const langSelect = document.getElementById('slt-settings-language') as HTMLSelectElement;
+    langSelect?.addEventListener('change', () => {
+        state.targetLanguage = langSelect.value;
+        storage.set('target-language', langSelect.value);
+        if (typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+            Spicetify.showNotification(`Language set to ${SUPPORTED_LANGUAGES.find(l => l.code === langSelect.value)?.name}`);
+        }
+    });
+    
+    const autoTranslateToggle = document.getElementById('slt-settings-autotranslate') as HTMLInputElement;
+    autoTranslateToggle?.addEventListener('change', () => {
+        state.autoTranslate = autoTranslateToggle.checked;
+        storage.set('auto-translate', state.autoTranslate.toString());
+    });
+    
+    const notificationsToggle = document.getElementById('slt-settings-notifications') as HTMLInputElement;
+    notificationsToggle?.addEventListener('change', () => {
+        state.showNotifications = notificationsToggle.checked;
+        storage.set('show-notifications', state.showNotifications.toString());
+    });
+    
+    const clearCacheBtn = document.getElementById('slt-settings-clear-cache');
+    clearCacheBtn?.addEventListener('click', () => {
+        clearTranslationCache();
+        const statsLabel = document.getElementById('slt-cache-stats');
+        if (statsLabel) {
+            statsLabel.textContent = ' 0 tracks cached (0 B)';
+        }
+        if (typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+            Spicetify.showNotification('Translation cache cleared!');
+        }
+    });
+    
+    const openModalBtn = document.getElementById('slt-settings-open-modal');
+    openModalBtn?.addEventListener('click', () => {
+        showSettingsModal();
+    });
+    
+    debug('Injected settings into Spotify settings page');
+}
+
+function setupSettingsPageObserver(): void {
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList') {
+                const settingsContainer = document.querySelector('.x-settings-container');
+                if (settingsContainer && !document.getElementById('slt-settings-section')) {
+                    setTimeout(() => injectSettingsIntoSpotifySettings(), 100);
+                }
+            }
+        }
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    
+    if (document.querySelector('.x-settings-container')) {
+        injectSettingsIntoSpotifySettings();
+    }
+}
+
 function setupPageObserver(): void {
     debug('Setting up page observer...');
     
@@ -1544,6 +1688,8 @@ async function initialize(): Promise<void> {
     initConnectionIndicator();
     
     registerSettingsMenu();
+    
+    setupSettingsPageObserver();
     
     startUpdateChecker(30 * 60 * 1000);
     

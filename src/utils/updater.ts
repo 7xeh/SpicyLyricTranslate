@@ -102,6 +102,21 @@ export function getCurrentVersion(): VersionInfo {
 }
 
 export async function getLatestVersion(): Promise<{ version: VersionInfo; release: GitHubRelease; downloadUrl: string } | null> {
+    let releaseNotes = '';
+    let githubRelease: GitHubRelease | null = null;
+    
+    try {
+        const ghResponse = await fetch(GITHUB_API_URL, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (ghResponse.ok) {
+            githubRelease = await ghResponse.json();
+            releaseNotes = githubRelease?.body || '';
+        }
+    } catch (e) {
+        debug('Could not fetch GitHub release notes:', e);
+    }
+    
     try {
         const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
         
@@ -117,8 +132,8 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
                         tag_name: `v${data.version}`,
                         name: `v${data.version}`,
                         html_url: data.release_notes_url || RELEASES_URL,
-                        body: '',
-                        published_at: new Date().toISOString(),
+                        body: data.changelog || releaseNotes || '',
+                        published_at: data.published_at || new Date().toISOString(),
                         assets: [{
                             name: EXTENSION_FILENAME,
                             browser_download_url: data.download_url,
@@ -132,6 +147,15 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
         }
     } catch (error) {
         warn('Self-hosted API unavailable, trying GitHub:', error);
+    }
+    
+    if (githubRelease) {
+        const version = parseVersion(githubRelease.tag_name);
+        if (version) {
+            const jsAsset = githubRelease.assets?.find(a => a.name.endsWith('.js'));
+            const downloadUrl = jsAsset?.browser_download_url || '';
+            return { version, release: githubRelease, downloadUrl };
+        }
     }
     
     try {
@@ -334,19 +358,38 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
                 padding: 12px 16px;
                 border-radius: 8px;
                 margin-bottom: 16px;
-                max-height: 200px;
+                max-height: 250px;
                 overflow-y: auto;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .slt-update-modal .release-notes::-webkit-scrollbar {
+                width: 6px;
+            }
+            .slt-update-modal .release-notes::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .slt-update-modal .release-notes::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 3px;
+            }
+            .slt-update-modal .release-notes::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.3);
             }
             .slt-update-modal .release-notes-title {
                 font-weight: 600;
-                margin-bottom: 8px;
+                margin-bottom: 12px;
                 color: var(--spice-text);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .slt-update-modal .release-notes-title::before {
+                content: '📋';
             }
             .slt-update-modal .release-notes-content {
                 color: var(--spice-subtext);
                 font-size: 13px;
-                white-space: pre-wrap;
-                line-height: 1.5;
+                line-height: 1.6;
             }
             .slt-update-modal .update-progress {
                 display: none;
@@ -465,12 +508,10 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
                 <span class="version-value version-new">${latestVersion.text}</span>
             </div>
         </div>
-        ${release.body ? `
-            <div class="release-notes">
-                <div class="release-notes-title">What's New:</div>
-                <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
-            </div>
-        ` : ''}
+        <div class="release-notes">
+            <div class="release-notes-title">Changelog</div>
+            <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
+        </div>
         <div class="update-progress">
             <div class="progress-bar">
                 <div class="progress-bar-fill"></div>
@@ -517,14 +558,21 @@ function showUpdateSnackbar(latestVersion: VersionInfo, release: GitHubRelease):
 }
 
 function formatReleaseNotes(body: string): string {
+    if (!body || body.trim() === '') {
+        return '<span style="color: var(--spice-subtext); font-style: italic;">No changelog available for this release.</span>';
+    }
+    
     return body
-        .replace(/^### (.*)/gm, '<strong>$1</strong>')
-        .replace(/^## (.*)/gm, '<strong style="font-size: 14px;">$1</strong>')
-        .replace(/^# (.*)/gm, '<strong style="font-size: 16px;">$1</strong>')
+        .replace(/^### (.*)/gm, '<div style="font-weight: 600; margin-top: 12px; margin-bottom: 6px; color: var(--spice-text);">$1</div>')
+        .replace(/^## (.*)/gm, '<div style="font-weight: 600; font-size: 14px; margin-top: 14px; margin-bottom: 8px; color: var(--spice-text);">$1</div>')
+        .replace(/^# (.*)/gm, '<div style="font-weight: 700; font-size: 15px; margin-top: 16px; margin-bottom: 10px; color: var(--spice-text);">$1</div>')
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/^- (.*)/gm, '• $1')
-        .replace(/\n/g, '<br>');
+        .replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #1db954;">$1</code>')
+        .replace(/^- (.*)/gm, '<div style="display: flex; gap: 8px; margin: 4px 0;"><span style="color: #1db954;">•</span><span>$1</span></div>')
+        .replace(/^\* (.*)/gm, '<div style="display: flex; gap: 8px; margin: 4px 0;"><span style="color: #1db954;">•</span><span>$1</span></div>')
+        .replace(/\n\n/g, '<div style="height: 8px;"></div>')
+        .replace(/\n/g, '');
 }
 
 export async function checkForUpdates(force: boolean = false): Promise<void> {

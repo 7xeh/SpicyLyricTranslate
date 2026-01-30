@@ -220,11 +220,53 @@ export function getTrackCacheStats(): {
     const storage = getStorage();
     if (!storage) return { trackCount: 0, totalLines: 0, oldestTimestamp: null, sizeBytes: 0 };
     
-    const index = getCacheIndex();
+    let trackCount = 0;
     let totalLines = 0;
     let oldestTimestamp: number | null = null;
     let sizeBytes = 0;
     
+    // Use native localStorage for iteration since Spicetify.LocalStorage doesn't support key()/length
+    const nativeStorage = typeof localStorage !== 'undefined' ? localStorage : null;
+    
+    if (nativeStorage) {
+        try {
+            const keys: string[] = [];
+            for (let i = 0; i < nativeStorage.length; i++) {
+                const key = nativeStorage.key(i);
+                if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+                    keys.push(key);
+                }
+            }
+            
+            trackCount = keys.length;
+            
+            keys.forEach(key => {
+                try {
+                    const entryStr = nativeStorage.getItem(key);
+                    if (entryStr) {
+                        sizeBytes += entryStr.length * 2;
+                        const entry: TrackCacheEntry = JSON.parse(entryStr);
+                        totalLines += entry.lines.length;
+                        
+                        if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
+                            oldestTimestamp = entry.timestamp;
+                        }
+                    }
+                } catch (e) {
+                    // Skip invalid entries
+                }
+            });
+            
+            if (trackCount > 0) {
+                return { trackCount, totalLines, oldestTimestamp, sizeBytes };
+            }
+        } catch (e) {
+            warn('Failed to iterate native localStorage:', e);
+        }
+    }
+    
+    // Fallback: use index
+    const index = getCacheIndex();
     index.trackUris.forEach(fullKey => {
         const lastColonIdx = fullKey.lastIndexOf(':');
         const uri = fullKey.substring(0, lastColonIdx);
@@ -234,6 +276,7 @@ export function getTrackCacheStats(): {
         try {
             const entryStr = storage.getItem(cacheKey);
             if (entryStr) {
+                trackCount++;
                 sizeBytes += entryStr.length * 2;
                 const entry: TrackCacheEntry = JSON.parse(entryStr);
                 totalLines += entry.lines.length;
@@ -248,7 +291,7 @@ export function getTrackCacheStats(): {
     });
     
     return {
-        trackCount: index.trackUris.length,
+        trackCount,
         totalLines,
         oldestTimestamp,
         sizeBytes
@@ -266,7 +309,6 @@ export function getAllCachedTracks(): Array<{
     const storage = getStorage();
     if (!storage) return [];
     
-    const index = getCacheIndex();
     const tracks: Array<{
         trackUri: string;
         targetLang: string;
@@ -276,6 +318,48 @@ export function getAllCachedTracks(): Array<{
         api?: string;
     }> = [];
     
+    // Use native localStorage for iteration since Spicetify.LocalStorage doesn't support key()/length
+    const nativeStorage = typeof localStorage !== 'undefined' ? localStorage : null;
+    
+    if (nativeStorage) {
+        try {
+            for (let i = 0; i < nativeStorage.length; i++) {
+                const key = nativeStorage.key(i);
+                if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+                    try {
+                        const entryStr = nativeStorage.getItem(key);
+                        if (entryStr) {
+                            const entry: TrackCacheEntry = JSON.parse(entryStr);
+                            const keyParts = key.substring(CACHE_KEY_PREFIX.length);
+                            const lastColonIdx = keyParts.lastIndexOf(':');
+                            const uri = keyParts.substring(0, lastColonIdx).replace(/_/g, ':');
+                            const lang = keyParts.substring(lastColonIdx + 1);
+                            
+                            tracks.push({
+                                trackUri: uri,
+                                targetLang: lang,
+                                sourceLang: entry.lang,
+                                lineCount: entry.lines.length,
+                                timestamp: entry.timestamp,
+                                api: entry.api
+                            });
+                        }
+                    } catch (e) {
+                        // Skip invalid entries
+                    }
+                }
+            }
+            
+            if (tracks.length > 0) {
+                return tracks.sort((a, b) => b.timestamp - a.timestamp);
+            }
+        } catch (e) {
+            warn('Failed to iterate native localStorage:', e);
+        }
+    }
+    
+    // Fallback: use index
+    const index = getCacheIndex();
     index.trackUris.forEach(fullKey => {
         const lastColonIdx = fullKey.lastIndexOf(':');
         const uri = fullKey.substring(0, lastColonIdx);

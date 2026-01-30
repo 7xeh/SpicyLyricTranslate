@@ -1451,26 +1451,55 @@ function injectSettingsIntoSpotifySettings(): void {
     debug('Injected settings into Spotify settings page');
 }
 
+let settingsPageObserver: MutationObserver | null = null;
+
 function setupSettingsPageObserver(): void {
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'childList') {
+    // Clean up existing observer
+    if (settingsPageObserver) {
+        settingsPageObserver.disconnect();
+        settingsPageObserver = null;
+    }
+    
+    // Initial injection if settings page is already open
+    if (document.querySelector('.x-settings-container')) {
+        injectSettingsIntoSpotifySettings();
+        return; // Settings already visible, no need for observer
+    }
+    
+    // Use a more targeted approach - only observe main content area
+    const mainView = document.querySelector('.Root__main-view') || document.querySelector('[data-testid="main-view-container"]');
+    const observerTarget = mainView || document.body;
+    
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    
+    settingsPageObserver = new MutationObserver((mutations) => {
+        // Debounce to prevent excessive calls
+        if (debounceTimer) return;
+        
+        const hasSettingsChange = mutations.some(m => 
+            m.type === 'childList' && 
+            Array.from(m.addedNodes).some(node => 
+                node.nodeType === Node.ELEMENT_NODE && 
+                ((node as Element).classList?.contains('x-settings-container') ||
+                 (node as Element).querySelector?.('.x-settings-container'))
+            )
+        );
+        
+        if (hasSettingsChange) {
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
                 const settingsContainer = document.querySelector('.x-settings-container');
                 if (settingsContainer && !document.getElementById('slt-settings-section')) {
-                    setTimeout(() => injectSettingsIntoSpotifySettings(), 100);
+                    injectSettingsIntoSpotifySettings();
                 }
-            }
+            }, 200);
         }
     });
     
-    observer.observe(document.body, {
+    settingsPageObserver.observe(observerTarget, {
         childList: true,
         subtree: true
     });
-    
-    if (document.querySelector('.x-settings-container')) {
-        injectSettingsIntoSpotifySettings();
-    }
 }
 
 function setupPageObserver(): void {

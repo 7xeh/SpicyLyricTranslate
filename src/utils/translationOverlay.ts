@@ -200,39 +200,68 @@ function renderTranslations(doc: Document): void {
     }
 }
 
+// Throttle state for active line changes
+let lastActiveLineUpdate = 0;
+const ACTIVE_LINE_THROTTLE_MS = 50;
+
 function onActiveLineChanged(doc: Document): void {
     if (!isOverlayEnabled) return;
     
-    const lines = getLyricLines(doc);
+    // Throttle updates to prevent excessive DOM manipulation
+    const now = Date.now();
+    if (now - lastActiveLineUpdate < ACTIVE_LINE_THROTTLE_MS) {
+        return;
+    }
+    lastActiveLineUpdate = now;
     
     if (currentConfig.mode === 'interleaved') {
+        const lines = getLyricLines(doc);
         // Find translations that are siblings of lines
         const translations = doc.querySelectorAll('.slt-interleaved-translation');
         translations.forEach((translationEl) => {
             const lineIndex = parseInt((translationEl as HTMLElement).dataset.forLine || '-1', 10);
             if (lineIndex >= 0 && lineIndex < lines.length) {
                 const line = lines[lineIndex];
-                translationEl.classList.toggle('active', isLineActive(line));
+                const shouldBeActive = isLineActive(line);
+                const isActive = translationEl.classList.contains('active');
+                // Only toggle if state changed to minimize reflows
+                if (shouldBeActive !== isActive) {
+                    translationEl.classList.toggle('active', shouldBeActive);
+                }
             }
         });
     }
 }
 
-let activeLinePollInterval: ReturnType<typeof setInterval> | null = null;
+// Store intervals per document to prevent memory leaks
+const activeLinePollIntervals = new Map<Document, ReturnType<typeof setInterval>>();
+const activeLineObservers = new Map<Document, MutationObserver>();
 
 function setupActiveLineObserver(doc: Document): void {
+    // Clean up existing observer for this document
+    const existingObserver = activeLineObservers.get(doc);
+    if (existingObserver) {
+        existingObserver.disconnect();
+        activeLineObservers.delete(doc);
+    }
+    
+    // Clean up existing interval for this document
+    const existingInterval = activeLinePollIntervals.get(doc);
+    if (existingInterval) {
+        clearInterval(existingInterval);
+        activeLinePollIntervals.delete(doc);
+    }
+    
+    // Also clean up legacy single observer if present
     if (activeLineObserver) {
         activeLineObserver.disconnect();
-    }
-    if (activeLinePollInterval) {
-        clearInterval(activeLinePollInterval);
-        activeLinePollInterval = null;
+        activeLineObserver = null;
     }
     
     const lyricsContainer = findLyricsContainer(doc);
     if (!lyricsContainer) return;
     
-    activeLineObserver = new MutationObserver((mutations) => {
+    const observer = new MutationObserver((mutations) => {
         let activeChanged = false;
         
         for (const mutation of mutations) {
@@ -243,9 +272,16 @@ function setupActiveLineObserver(doc: Document): void {
                     break;
                 }
             }
-            if (mutation.type === 'childList') {
-                activeChanged = true;
-                break;
+            // Only trigger on childList if it's adding/removing line elements
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                const hasLineChange = Array.from(mutation.addedNodes).some(node => 
+                    node.nodeType === Node.ELEMENT_NODE && 
+                    ((node as Element).classList?.contains('line') || (node as Element).querySelector?.('.line'))
+                );
+                if (hasLineChange) {
+                    activeChanged = true;
+                    break;
+                }
             }
         }
         
@@ -254,18 +290,24 @@ function setupActiveLineObserver(doc: Document): void {
         }
     });
     
-    activeLineObserver.observe(lyricsContainer, {
+    observer.observe(lyricsContainer, {
         attributes: true,
-        attributeFilter: ['class', 'data-active', 'style'],
+        attributeFilter: ['class', 'data-active'],
         subtree: true,
         childList: true
     });
     
-    activeLinePollInterval = setInterval(() => {
+    activeLineObservers.set(doc, observer);
+    
+    // Use a longer interval (250ms instead of 100ms) to reduce CPU usage
+    // The MutationObserver handles most active line changes, this is just a fallback
+    const intervalId = setInterval(() => {
         if (isOverlayEnabled && currentConfig.mode === 'interleaved') {
             onActiveLineChanged(doc);
         }
-    }, 100);
+    }, 250);
+    
+    activeLinePollIntervals.set(doc, intervalId);
 }
 
 export function enableOverlay(config?: Partial<OverlayConfig>): void {
@@ -301,14 +343,21 @@ export function disableOverlay(): void {
     
     cleanupInterleavedTracking();
     
+    // Clean up all document-specific observers and intervals
+    activeLineObservers.forEach((observer, doc) => {
+        observer.disconnect();
+    });
+    activeLineObservers.clear();
+    
+    activeLinePollIntervals.forEach((interval, doc) => {
+        clearInterval(interval);
+    });
+    activeLinePollIntervals.clear();
+    
+    // Also clean up legacy single observer if present
     if (activeLineObserver) {
         activeLineObserver.disconnect();
         activeLineObserver = null;
-    }
-    
-    if (activeLinePollInterval) {
-        clearInterval(activeLinePollInterval);
-        activeLinePollInterval = null;
     }
     
     const cleanup = (doc: Document) => {

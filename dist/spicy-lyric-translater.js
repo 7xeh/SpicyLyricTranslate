@@ -1096,34 +1096,53 @@ var SpicyLyricTranslater = (() => {
         break;
     }
   }
+  var lastActiveLineUpdate = 0;
+  var ACTIVE_LINE_THROTTLE_MS = 50;
   function onActiveLineChanged(doc) {
     if (!isOverlayEnabled)
       return;
-    const lines = getLyricLines(doc);
+    const now = Date.now();
+    if (now - lastActiveLineUpdate < ACTIVE_LINE_THROTTLE_MS) {
+      return;
+    }
+    lastActiveLineUpdate = now;
     if (currentConfig.mode === "interleaved") {
+      const lines = getLyricLines(doc);
       const translations = doc.querySelectorAll(".slt-interleaved-translation");
       translations.forEach((translationEl) => {
         const lineIndex = parseInt(translationEl.dataset.forLine || "-1", 10);
         if (lineIndex >= 0 && lineIndex < lines.length) {
           const line = lines[lineIndex];
-          translationEl.classList.toggle("active", isLineActive(line));
+          const shouldBeActive = isLineActive(line);
+          const isActive = translationEl.classList.contains("active");
+          if (shouldBeActive !== isActive) {
+            translationEl.classList.toggle("active", shouldBeActive);
+          }
         }
       });
     }
   }
-  var activeLinePollInterval = null;
+  var activeLinePollIntervals = /* @__PURE__ */ new Map();
+  var activeLineObservers = /* @__PURE__ */ new Map();
   function setupActiveLineObserver(doc) {
+    const existingObserver = activeLineObservers.get(doc);
+    if (existingObserver) {
+      existingObserver.disconnect();
+      activeLineObservers.delete(doc);
+    }
+    const existingInterval = activeLinePollIntervals.get(doc);
+    if (existingInterval) {
+      clearInterval(existingInterval);
+      activeLinePollIntervals.delete(doc);
+    }
     if (activeLineObserver) {
       activeLineObserver.disconnect();
-    }
-    if (activeLinePollInterval) {
-      clearInterval(activeLinePollInterval);
-      activeLinePollInterval = null;
+      activeLineObserver = null;
     }
     const lyricsContainer = findLyricsContainer(doc);
     if (!lyricsContainer)
       return;
-    activeLineObserver = new MutationObserver((mutations) => {
+    const observer = new MutationObserver((mutations) => {
       let activeChanged = false;
       for (const mutation of mutations) {
         if (mutation.type === "attributes") {
@@ -1133,26 +1152,33 @@ var SpicyLyricTranslater = (() => {
             break;
           }
         }
-        if (mutation.type === "childList") {
-          activeChanged = true;
-          break;
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          const hasLineChange = Array.from(mutation.addedNodes).some(
+            (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("line") || node.querySelector?.(".line"))
+          );
+          if (hasLineChange) {
+            activeChanged = true;
+            break;
+          }
         }
       }
       if (activeChanged) {
         onActiveLineChanged(doc);
       }
     });
-    activeLineObserver.observe(lyricsContainer, {
+    observer.observe(lyricsContainer, {
       attributes: true,
-      attributeFilter: ["class", "data-active", "style"],
+      attributeFilter: ["class", "data-active"],
       subtree: true,
       childList: true
     });
-    activeLinePollInterval = setInterval(() => {
+    activeLineObservers.set(doc, observer);
+    const intervalId = setInterval(() => {
       if (isOverlayEnabled && currentConfig.mode === "interleaved") {
         onActiveLineChanged(doc);
       }
-    }, 100);
+    }, 250);
+    activeLinePollIntervals.set(doc, intervalId);
   }
   function enableOverlay(config) {
     if (config) {
@@ -1178,13 +1204,17 @@ var SpicyLyricTranslater = (() => {
   function disableOverlay() {
     isOverlayEnabled = false;
     cleanupInterleavedTracking();
+    activeLineObservers.forEach((observer, doc) => {
+      observer.disconnect();
+    });
+    activeLineObservers.clear();
+    activeLinePollIntervals.forEach((interval, doc) => {
+      clearInterval(interval);
+    });
+    activeLinePollIntervals.clear();
     if (activeLineObserver) {
       activeLineObserver.disconnect();
       activeLineObserver = null;
-    }
-    if (activeLinePollInterval) {
-      clearInterval(activeLinePollInterval);
-      activeLinePollInterval = null;
     }
     const cleanup = (doc) => {
       const overlay = doc.getElementById("spicy-translate-overlay");
@@ -1719,7 +1749,7 @@ body.slt-overlay-active .LyricsContent {}
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.7.3" : "0.0.0";
+    return true ? "1.7.4" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
@@ -3979,24 +4009,41 @@ body.slt-overlay-active .LyricsContent {}
     });
     debug("Injected settings into Spotify settings page");
   }
+  var settingsPageObserver = null;
   function setupSettingsPageObserver() {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "childList") {
+    if (settingsPageObserver) {
+      settingsPageObserver.disconnect();
+      settingsPageObserver = null;
+    }
+    if (document.querySelector(".x-settings-container")) {
+      injectSettingsIntoSpotifySettings();
+      return;
+    }
+    const mainView = document.querySelector(".Root__main-view") || document.querySelector('[data-testid="main-view-container"]');
+    const observerTarget = mainView || document.body;
+    let debounceTimer = null;
+    settingsPageObserver = new MutationObserver((mutations) => {
+      if (debounceTimer)
+        return;
+      const hasSettingsChange = mutations.some(
+        (m) => m.type === "childList" && Array.from(m.addedNodes).some(
+          (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("x-settings-container") || node.querySelector?.(".x-settings-container"))
+        )
+      );
+      if (hasSettingsChange) {
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
           const settingsContainer = document.querySelector(".x-settings-container");
           if (settingsContainer && !document.getElementById("slt-settings-section")) {
-            setTimeout(() => injectSettingsIntoSpotifySettings(), 100);
+            injectSettingsIntoSpotifySettings();
           }
-        }
+        }, 200);
       }
     });
-    observer.observe(document.body, {
+    settingsPageObserver.observe(observerTarget, {
       childList: true,
       subtree: true
     });
-    if (document.querySelector(".x-settings-container")) {
-      injectSettingsIntoSpotifySettings();
-    }
   }
   function setupPageObserver() {
     debug("Setting up page observer...");

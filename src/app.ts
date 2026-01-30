@@ -495,17 +495,17 @@ async function translateCurrentLyrics(): Promise<void> {
         }
     }
     
-    const lines = getLyricsLines();
+    let lines = getLyricsLines();
     
     if (lines.length === 0) {
         debug('No lyrics lines found, waiting...');
         await new Promise(resolve => setTimeout(resolve, 500));
-        const retryLines = getLyricsLines();
-        if (retryLines.length === 0) {
+        lines = getLyricsLines();
+        if (lines.length === 0) {
             debug('Still no lyrics lines found');
             return;
         }
-        return translateCurrentLyrics();
+        // Continue with the found lines instead of recursive call
     }
     
     state.isTranslating = true;

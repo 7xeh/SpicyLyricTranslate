@@ -210,9 +210,6 @@ var SpicyLyricTranslater = (() => {
   var CACHE_EXPIRY_DAYS = 14;
   var CACHE_EXPIRY_MS = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1e3;
   function getStorage() {
-    if (typeof Spicetify !== "undefined" && Spicetify.LocalStorage) {
-      return Spicetify.LocalStorage;
-    }
     if (typeof localStorage !== "undefined") {
       return localStorage;
     }
@@ -1045,32 +1042,48 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function applyInterleavedMode(doc) {
-    const lines = getLyricLines(doc);
-    doc.querySelectorAll(".slt-interleaved-translation").forEach((el) => el.remove());
-    lines.forEach((line, index) => {
-      const translation = translationMap.get(index);
-      const originalText = extractLineText(line);
-      const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
-      if (!translation && !isBreak)
+    try {
+      const lines = getLyricLines(doc);
+      if (!lines || lines.length === 0) {
+        debug("No lyrics lines found for interleaved mode");
         return;
-      if (translation === originalText)
-        return;
-      line.classList.add("slt-overlay-parent");
-      line.dataset.sltIndex = index.toString();
-      const translationEl = doc.createElement("div");
-      translationEl.className = "slt-interleaved-translation";
-      translationEl.dataset.forLine = index.toString();
-      if (isBreak) {
-        translationEl.textContent = "\u2022 \u2022 \u2022";
-        translationEl.classList.add("slt-music-break");
-      } else {
-        translationEl.textContent = translation || "";
       }
-      if (isLineActive(line))
-        translationEl.classList.add("active");
-      line.parentNode?.insertBefore(translationEl, line.nextSibling);
-    });
-    setupInterleavedTracking(doc);
+      doc.querySelectorAll(".slt-interleaved-translation").forEach((el) => el.remove());
+      lines.forEach((line, index) => {
+        try {
+          const translation = translationMap.get(index);
+          const originalText = extractLineText(line);
+          const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
+          if (!translation && !isBreak)
+            return;
+          if (translation === originalText)
+            return;
+          if (!line.parentNode) {
+            warn("Line element has no parent, skipping:", index);
+            return;
+          }
+          line.classList.add("slt-overlay-parent");
+          line.dataset.sltIndex = index.toString();
+          const translationEl = doc.createElement("div");
+          translationEl.className = "slt-interleaved-translation";
+          translationEl.dataset.forLine = index.toString();
+          if (isBreak) {
+            translationEl.textContent = "\u2022 \u2022 \u2022";
+            translationEl.classList.add("slt-music-break");
+          } else {
+            translationEl.textContent = translation || "";
+          }
+          if (isLineActive(line))
+            translationEl.classList.add("active");
+          line.parentNode.insertBefore(translationEl, line.nextSibling);
+        } catch (lineErr) {
+          warn("Failed to process line", index, ":", lineErr);
+        }
+      });
+      setupInterleavedTracking(doc);
+    } catch (err) {
+      warn("Failed to apply interleaved mode:", err);
+    }
   }
   function initOverlayContainer(doc) {
     let container = doc.getElementById("spicy-translate-overlay");
@@ -1098,87 +1111,146 @@ var SpicyLyricTranslater = (() => {
   }
   var lastActiveLineUpdate = 0;
   var ACTIVE_LINE_THROTTLE_MS = 50;
+  function isDocumentValid(doc) {
+    try {
+      return doc && doc.body !== null && doc.defaultView !== null;
+    } catch {
+      return false;
+    }
+  }
   function onActiveLineChanged(doc) {
     if (!isOverlayEnabled)
       return;
+    if (!isDocumentValid(doc)) {
+      const observer = activeLineObservers.get(doc);
+      if (observer) {
+        try {
+          observer.disconnect();
+        } catch {
+        }
+        activeLineObservers.delete(doc);
+      }
+      const interval = activeLinePollIntervals.get(doc);
+      if (interval) {
+        clearInterval(interval);
+        activeLinePollIntervals.delete(doc);
+      }
+      return;
+    }
     const now = Date.now();
     if (now - lastActiveLineUpdate < ACTIVE_LINE_THROTTLE_MS) {
       return;
     }
     lastActiveLineUpdate = now;
-    if (currentConfig.mode === "interleaved") {
-      const lines = getLyricLines(doc);
-      const translations = doc.querySelectorAll(".slt-interleaved-translation");
-      translations.forEach((translationEl) => {
-        const lineIndex = parseInt(translationEl.dataset.forLine || "-1", 10);
-        if (lineIndex >= 0 && lineIndex < lines.length) {
-          const line = lines[lineIndex];
-          const shouldBeActive = isLineActive(line);
-          const isActive = translationEl.classList.contains("active");
-          if (shouldBeActive !== isActive) {
-            translationEl.classList.toggle("active", shouldBeActive);
+    try {
+      if (currentConfig.mode === "interleaved") {
+        const lines = getLyricLines(doc);
+        if (!lines || lines.length === 0)
+          return;
+        const translations = doc.querySelectorAll(".slt-interleaved-translation");
+        translations.forEach((translationEl) => {
+          try {
+            const lineIndex = parseInt(translationEl.dataset.forLine || "-1", 10);
+            if (lineIndex >= 0 && lineIndex < lines.length) {
+              const line = lines[lineIndex];
+              if (line) {
+                const shouldBeActive = isLineActive(line);
+                const isActive = translationEl.classList.contains("active");
+                if (shouldBeActive !== isActive) {
+                  translationEl.classList.toggle("active", shouldBeActive);
+                }
+              }
+            }
+          } catch (e) {
           }
-        }
-      });
+        });
+      }
+    } catch (err) {
     }
   }
   var activeLinePollIntervals = /* @__PURE__ */ new Map();
   var activeLineObservers = /* @__PURE__ */ new Map();
   function setupActiveLineObserver(doc) {
-    const existingObserver = activeLineObservers.get(doc);
-    if (existingObserver) {
-      existingObserver.disconnect();
-      activeLineObservers.delete(doc);
-    }
-    const existingInterval = activeLinePollIntervals.get(doc);
-    if (existingInterval) {
-      clearInterval(existingInterval);
-      activeLinePollIntervals.delete(doc);
-    }
-    if (activeLineObserver) {
-      activeLineObserver.disconnect();
-      activeLineObserver = null;
-    }
-    const lyricsContainer = findLyricsContainer(doc);
-    if (!lyricsContainer)
-      return;
-    const observer = new MutationObserver((mutations) => {
-      let activeChanged = false;
-      for (const mutation of mutations) {
-        if (mutation.type === "attributes") {
-          const target = mutation.target;
-          if (target.classList.contains("line") || target.closest(".line")) {
-            activeChanged = true;
-            break;
+    try {
+      if (!isDocumentValid(doc)) {
+        debug("Document not valid for observer setup");
+        return;
+      }
+      const existingObserver = activeLineObservers.get(doc);
+      if (existingObserver) {
+        existingObserver.disconnect();
+        activeLineObservers.delete(doc);
+      }
+      const existingInterval = activeLinePollIntervals.get(doc);
+      if (existingInterval) {
+        clearInterval(existingInterval);
+        activeLinePollIntervals.delete(doc);
+      }
+      if (activeLineObserver) {
+        activeLineObserver.disconnect();
+        activeLineObserver = null;
+      }
+      const lyricsContainer = findLyricsContainer(doc);
+      if (!lyricsContainer) {
+        debug("No lyrics container found for observer setup");
+        return;
+      }
+      const observer = new MutationObserver((mutations) => {
+        try {
+          let activeChanged = false;
+          for (const mutation of mutations) {
+            if (mutation.type === "attributes") {
+              const target = mutation.target;
+              if (target && (target.classList?.contains("line") || target.closest?.(".line"))) {
+                activeChanged = true;
+                break;
+              }
+            }
+            if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+              const hasLineChange = Array.from(mutation.addedNodes).some(
+                (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("line") || node.querySelector?.(".line"))
+              );
+              if (hasLineChange) {
+                activeChanged = true;
+                break;
+              }
+            }
           }
-        }
-        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-          const hasLineChange = Array.from(mutation.addedNodes).some(
-            (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("line") || node.querySelector?.(".line"))
-          );
-          if (hasLineChange) {
-            activeChanged = true;
-            break;
+          if (activeChanged) {
+            onActiveLineChanged(doc);
           }
+        } catch (e) {
         }
-      }
-      if (activeChanged) {
-        onActiveLineChanged(doc);
-      }
-    });
-    observer.observe(lyricsContainer, {
-      attributes: true,
-      attributeFilter: ["class", "data-active"],
-      subtree: true,
-      childList: true
-    });
-    activeLineObservers.set(doc, observer);
-    const intervalId = setInterval(() => {
-      if (isOverlayEnabled && currentConfig.mode === "interleaved") {
-        onActiveLineChanged(doc);
-      }
-    }, 250);
-    activeLinePollIntervals.set(doc, intervalId);
+      });
+      observer.observe(lyricsContainer, {
+        attributes: true,
+        attributeFilter: ["class", "data-active"],
+        subtree: true,
+        childList: true
+      });
+      activeLineObservers.set(doc, observer);
+      const intervalId = setInterval(() => {
+        if (!isDocumentValid(doc)) {
+          clearInterval(intervalId);
+          activeLinePollIntervals.delete(doc);
+          const obs = activeLineObservers.get(doc);
+          if (obs) {
+            try {
+              obs.disconnect();
+            } catch {
+            }
+            activeLineObservers.delete(doc);
+          }
+          return;
+        }
+        if (isOverlayEnabled && currentConfig.mode === "interleaved") {
+          onActiveLineChanged(doc);
+        }
+      }, 250);
+      activeLinePollIntervals.set(doc, intervalId);
+    } catch (err) {
+      warn("Failed to setup active line observer:", err);
+    }
   }
   function enableOverlay(config) {
     if (config) {
@@ -1749,7 +1821,7 @@ body.slt-overlay-active .LyricsContent {}
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.7.4" : "0.0.0";
+    return true ? "1.7.5" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
@@ -3187,16 +3259,15 @@ body.slt-overlay-active .LyricsContent {}
         return;
       }
     }
-    const lines = getLyricsLines();
+    let lines = getLyricsLines();
     if (lines.length === 0) {
       debug("No lyrics lines found, waiting...");
       await new Promise((resolve) => setTimeout(resolve, 500));
-      const retryLines = getLyricsLines();
-      if (retryLines.length === 0) {
+      lines = getLyricsLines();
+      if (lines.length === 0) {
         debug("Still no lyrics lines found");
         return;
       }
-      return translateCurrentLyrics();
     }
     state.isTranslating = true;
     const button = document.querySelector("#TranslateToggle");

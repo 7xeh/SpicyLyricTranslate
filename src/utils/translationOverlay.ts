@@ -132,43 +132,61 @@ function cleanupInterleavedTracking(): void {
 }
 
 function applyInterleavedMode(doc: Document): void {
-    const lines = getLyricLines(doc);
-    
-    // Remove any existing interleaved translations
-    doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
-    
-    lines.forEach((line, index) => {
-        const translation = translationMap.get(index);
-        const originalText = extractLineText(line);
-        
-        // Check if this is a music break (empty line or just symbols)
-        const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
-        
-        // Skip if no translation and not a break, or if translation matches original
-        if (!translation && !isBreak) return;
-        if (translation === originalText) return;
-        
-        line.classList.add('slt-overlay-parent');
-        (line as HTMLElement).dataset.sltIndex = index.toString();
-        
-        const translationEl = doc.createElement('div');
-        translationEl.className = 'slt-interleaved-translation';
-        translationEl.dataset.forLine = index.toString();
-        
-        if (isBreak) {
-            translationEl.textContent = '• • •';
-            translationEl.classList.add('slt-music-break');
-        } else {
-            translationEl.textContent = translation || '';
+    try {
+        const lines = getLyricLines(doc);
+        if (!lines || lines.length === 0) {
+            debug('No lyrics lines found for interleaved mode');
+            return;
         }
         
-        if (isLineActive(line)) translationEl.classList.add('active');
+        // Remove any existing interleaved translations
+        doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
         
-        // Insert translation directly after the line element
-        line.parentNode?.insertBefore(translationEl, line.nextSibling);
-    });
-    
-    setupInterleavedTracking(doc);
+        lines.forEach((line, index) => {
+            try {
+                const translation = translationMap.get(index);
+                const originalText = extractLineText(line);
+                
+                // Check if this is a music break (empty line or just symbols)
+                const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
+                
+                // Skip if no translation and not a break, or if translation matches original
+                if (!translation && !isBreak) return;
+                if (translation === originalText) return;
+                
+                // Ensure line has a parent before proceeding
+                if (!line.parentNode) {
+                    warn('Line element has no parent, skipping:', index);
+                    return;
+                }
+                
+                line.classList.add('slt-overlay-parent');
+                (line as HTMLElement).dataset.sltIndex = index.toString();
+                
+                const translationEl = doc.createElement('div');
+                translationEl.className = 'slt-interleaved-translation';
+                translationEl.dataset.forLine = index.toString();
+                
+                if (isBreak) {
+                    translationEl.textContent = '• • •';
+                    translationEl.classList.add('slt-music-break');
+                } else {
+                    translationEl.textContent = translation || '';
+                }
+                
+                if (isLineActive(line)) translationEl.classList.add('active');
+                
+                // Insert translation directly after the line element
+                line.parentNode.insertBefore(translationEl, line.nextSibling);
+            } catch (lineErr) {
+                warn('Failed to process line', index, ':', lineErr);
+            }
+        });
+        
+        setupInterleavedTracking(doc);
+    } catch (err) {
+        warn('Failed to apply interleaved mode:', err);
+    }
 }
 
 function initOverlayContainer(doc: Document): HTMLElement | null {
@@ -204,8 +222,33 @@ function renderTranslations(doc: Document): void {
 let lastActiveLineUpdate = 0;
 const ACTIVE_LINE_THROTTLE_MS = 50;
 
+function isDocumentValid(doc: Document): boolean {
+    try {
+        // Check if document is still accessible and not detached
+        return doc && doc.body !== null && doc.defaultView !== null;
+    } catch {
+        return false;
+    }
+}
+
 function onActiveLineChanged(doc: Document): void {
     if (!isOverlayEnabled) return;
+    
+    // Check if document is still valid (prevents crashes with closed PIP windows)
+    if (!isDocumentValid(doc)) {
+        // Clean up resources for this invalid document
+        const observer = activeLineObservers.get(doc);
+        if (observer) {
+            try { observer.disconnect(); } catch {}
+            activeLineObservers.delete(doc);
+        }
+        const interval = activeLinePollIntervals.get(doc);
+        if (interval) {
+            clearInterval(interval);
+            activeLinePollIntervals.delete(doc);
+        }
+        return;
+    }
     
     // Throttle updates to prevent excessive DOM manipulation
     const now = Date.now();
@@ -214,22 +257,34 @@ function onActiveLineChanged(doc: Document): void {
     }
     lastActiveLineUpdate = now;
     
-    if (currentConfig.mode === 'interleaved') {
-        const lines = getLyricLines(doc);
-        // Find translations that are siblings of lines
-        const translations = doc.querySelectorAll('.slt-interleaved-translation');
-        translations.forEach((translationEl) => {
-            const lineIndex = parseInt((translationEl as HTMLElement).dataset.forLine || '-1', 10);
-            if (lineIndex >= 0 && lineIndex < lines.length) {
-                const line = lines[lineIndex];
-                const shouldBeActive = isLineActive(line);
-                const isActive = translationEl.classList.contains('active');
-                // Only toggle if state changed to minimize reflows
-                if (shouldBeActive !== isActive) {
-                    translationEl.classList.toggle('active', shouldBeActive);
+    try {
+        if (currentConfig.mode === 'interleaved') {
+            const lines = getLyricLines(doc);
+            if (!lines || lines.length === 0) return;
+            
+            // Find translations that are siblings of lines
+            const translations = doc.querySelectorAll('.slt-interleaved-translation');
+            translations.forEach((translationEl) => {
+                try {
+                    const lineIndex = parseInt((translationEl as HTMLElement).dataset.forLine || '-1', 10);
+                    if (lineIndex >= 0 && lineIndex < lines.length) {
+                        const line = lines[lineIndex];
+                        if (line) {
+                            const shouldBeActive = isLineActive(line);
+                            const isActive = translationEl.classList.contains('active');
+                            // Only toggle if state changed to minimize reflows
+                            if (shouldBeActive !== isActive) {
+                                translationEl.classList.toggle('active', shouldBeActive);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Silently ignore individual element errors
                 }
-            }
-        });
+            });
+        }
+    } catch (err) {
+        // Silently ignore to prevent crash loops
     }
 }
 
@@ -238,76 +293,104 @@ const activeLinePollIntervals = new Map<Document, ReturnType<typeof setInterval>
 const activeLineObservers = new Map<Document, MutationObserver>();
 
 function setupActiveLineObserver(doc: Document): void {
-    // Clean up existing observer for this document
-    const existingObserver = activeLineObservers.get(doc);
-    if (existingObserver) {
-        existingObserver.disconnect();
-        activeLineObservers.delete(doc);
-    }
-    
-    // Clean up existing interval for this document
-    const existingInterval = activeLinePollIntervals.get(doc);
-    if (existingInterval) {
-        clearInterval(existingInterval);
-        activeLinePollIntervals.delete(doc);
-    }
-    
-    // Also clean up legacy single observer if present
-    if (activeLineObserver) {
-        activeLineObserver.disconnect();
-        activeLineObserver = null;
-    }
-    
-    const lyricsContainer = findLyricsContainer(doc);
-    if (!lyricsContainer) return;
-    
-    const observer = new MutationObserver((mutations) => {
-        let activeChanged = false;
-        
-        for (const mutation of mutations) {
-            if (mutation.type === 'attributes') {
-                const target = mutation.target as HTMLElement;
-                if (target.classList.contains('line') || target.closest('.line')) {
-                    activeChanged = true;
-                    break;
-                }
-            }
-            // Only trigger on childList if it's adding/removing line elements
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                const hasLineChange = Array.from(mutation.addedNodes).some(node => 
-                    node.nodeType === Node.ELEMENT_NODE && 
-                    ((node as Element).classList?.contains('line') || (node as Element).querySelector?.('.line'))
-                );
-                if (hasLineChange) {
-                    activeChanged = true;
-                    break;
-                }
-            }
+    try {
+        // Validate document before setup
+        if (!isDocumentValid(doc)) {
+            debug('Document not valid for observer setup');
+            return;
         }
         
-        if (activeChanged) {
-            onActiveLineChanged(doc);
+        // Clean up existing observer for this document
+        const existingObserver = activeLineObservers.get(doc);
+        if (existingObserver) {
+            existingObserver.disconnect();
+            activeLineObservers.delete(doc);
         }
-    });
-    
-    observer.observe(lyricsContainer, {
-        attributes: true,
-        attributeFilter: ['class', 'data-active'],
-        subtree: true,
-        childList: true
-    });
-    
-    activeLineObservers.set(doc, observer);
-    
-    // Use a longer interval (250ms instead of 100ms) to reduce CPU usage
-    // The MutationObserver handles most active line changes, this is just a fallback
-    const intervalId = setInterval(() => {
-        if (isOverlayEnabled && currentConfig.mode === 'interleaved') {
-            onActiveLineChanged(doc);
+        
+        // Clean up existing interval for this document
+        const existingInterval = activeLinePollIntervals.get(doc);
+        if (existingInterval) {
+            clearInterval(existingInterval);
+            activeLinePollIntervals.delete(doc);
         }
-    }, 250);
-    
-    activeLinePollIntervals.set(doc, intervalId);
+        
+        // Also clean up legacy single observer if present
+        if (activeLineObserver) {
+            activeLineObserver.disconnect();
+            activeLineObserver = null;
+        }
+        
+        const lyricsContainer = findLyricsContainer(doc);
+        if (!lyricsContainer) {
+            debug('No lyrics container found for observer setup');
+            return;
+        }
+        
+        const observer = new MutationObserver((mutations) => {
+            try {
+                let activeChanged = false;
+                
+                for (const mutation of mutations) {
+                    if (mutation.type === 'attributes') {
+                        const target = mutation.target as HTMLElement;
+                        if (target && (target.classList?.contains('line') || target.closest?.('.line'))) {
+                            activeChanged = true;
+                            break;
+                        }
+                    }
+                    // Only trigger on childList if it's adding/removing line elements
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        const hasLineChange = Array.from(mutation.addedNodes).some(node => 
+                            node.nodeType === Node.ELEMENT_NODE && 
+                            ((node as Element).classList?.contains('line') || (node as Element).querySelector?.('.line'))
+                        );
+                        if (hasLineChange) {
+                            activeChanged = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (activeChanged) {
+                    onActiveLineChanged(doc);
+                }
+            } catch (e) {
+                // Silently ignore mutation callback errors
+            }
+        });
+        
+        observer.observe(lyricsContainer, {
+            attributes: true,
+            attributeFilter: ['class', 'data-active'],
+            subtree: true,
+            childList: true
+        });
+        
+        activeLineObservers.set(doc, observer);
+        
+        // Use a longer interval (250ms instead of 100ms) to reduce CPU usage
+        // The MutationObserver handles most active line changes, this is just a fallback
+        const intervalId = setInterval(() => {
+            // Early exit if document is no longer valid (e.g., PIP window closed)
+            if (!isDocumentValid(doc)) {
+                clearInterval(intervalId);
+                activeLinePollIntervals.delete(doc);
+                const obs = activeLineObservers.get(doc);
+                if (obs) {
+                    try { obs.disconnect(); } catch {}
+                    activeLineObservers.delete(doc);
+                }
+                return;
+            }
+            if (isOverlayEnabled && currentConfig.mode === 'interleaved') {
+                onActiveLineChanged(doc);
+            }
+        }, 250);
+        
+        activeLinePollIntervals.set(doc, intervalId);
+    } catch (err) {
+        warn('Failed to setup active line observer:', err);
+    }
 }
 
 export function enableOverlay(config?: Partial<OverlayConfig>): void {

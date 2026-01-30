@@ -18,10 +18,9 @@ interface CacheIndex {
     trackUris: string[];
 }
 
+// Always use native localStorage - Spicetify.LocalStorage has different method names
+// (get/set vs getItem/setItem) which causes crashes
 function getStorage(): typeof localStorage | null {
-    if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
-        return Spicetify.LocalStorage as unknown as typeof localStorage;
-    }
     if (typeof localStorage !== 'undefined') {
         return localStorage;
     }

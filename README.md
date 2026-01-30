@@ -44,7 +44,7 @@ Real-time lyric translation extension for **[Spicy Lyrics](https://github.com/Sp
 
 ## Preview
 
-![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
+![Preview](https://raw.githubusercontent.com/7xeh/SpicyLyricTranslate/main/preview.png)
 
 ---
 

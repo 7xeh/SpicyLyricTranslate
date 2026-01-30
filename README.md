@@ -1,23 +1,67 @@
-# Spicy Lyric Translater
+# 🌶️ Spicy Lyric Translator
 
-Real-time lyric translation for [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics).
+Real-time lyric translation extension for  
+**[Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics)** on Spicetify.
 
 ![Spicetify](https://img.shields.io/badge/Spicetify-Extension-1DB954?style=flat-square&logo=spotify&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
-
-Discord: https://discord.gg/fXK34DeDW5
-Status: https://7xeh.dev/apps/spicylyrictranslate/status/
-
-![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
-
-## Quick Start
-
-Install via **Spicetify Marketplace** → Search "Spicy Lyric Translater" → Install
-
-## Documentation
-
-📖 **[Full Documentation](https://7xeh.dev/apps/spicylyrictranslate/docs)**
+![Status](https://img.shields.io/badge/Status-Online-success?style=flat-square)
 
 ---
 
-Made with ❤️ for the Spicetify community
+## ✨ Features
+
+- 🌍 Real-time lyric translation  
+- ⚡ Lightweight and fast  
+- 🔒 Privacy-friendly (no tracking)  
+- 🎵 Seamless integration with Spicy Lyrics  
+- 🛠️ Easy installation via Marketplace  
+
+---
+
+## 📸 Preview
+
+![Preview](https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png)
+
+---
+
+## 🚀 Quick Start
+
+Install using **Spicetify Marketplace**:
+
+1. Open Spicetify Marketplace  
+2. Search for **Spicy Lyric Translator**  
+3. Click **Install**
+
+Done. No additional setup required.
+
+---
+
+## 📖 Documentation
+
+Full setup and usage guide:
+
+👉 **https://7xeh.dev/apps/spicylyrictranslate/docs**
+
+---
+
+## 📡 Status
+
+Live status page:
+
+👉 https://7xeh.dev/apps/spicylyrictranslate/status/
+
+---
+
+## 💬 Community
+
+Join the Discord server for support, updates, and feedback:
+
+👉 https://discord.gg/fXK34DeDW5
+
+---
+
+## ❤️ Credits
+
+Made with ❤️ for the Spicetify community  
+by **7xeh**

@@ -1821,7 +1821,7 @@ body.slt-overlay-active .LyricsContent {}
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.7.5" : "0.0.0";
+    return true ? "1.7.6" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";

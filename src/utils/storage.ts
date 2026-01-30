@@ -1,16 +1,7 @@
-/**
- * Storage utility for Spicy Lyric Translater
- * Handles localStorage operations with proper namespacing
- */
-
 const STORAGE_PREFIX = "spicy-lyric-translater:";
 
-// Max storage size to prevent quota exceeded errors (5MB typical limit)
-const MAX_STORAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB to leave buffer
+const MAX_STORAGE_SIZE_BYTES = 4 * 1024 * 1024;
 
-/**
- * Check if localStorage is available
- */
 function isLocalStorageAvailable(): boolean {
     try {
         const test = '__storage_test__';
@@ -22,9 +13,6 @@ function isLocalStorageAvailable(): boolean {
     }
 }
 
-/**
- * Get approximate size of all extension storage
- */
 function getStorageSize(): number {
     let total = 0;
     try {
@@ -38,9 +26,8 @@ function getStorageSize(): number {
             }
         }
     } catch (e) {
-        // Ignore errors
     }
-    return total * 2; // UTF-16 uses 2 bytes per character
+    return total * 2;
 }
 
 export const storage = {
@@ -114,9 +101,6 @@ export const storage = {
         }
     },
     
-    /**
-     * Get storage usage statistics
-     */
     getStats(): { usedBytes: number; maxBytes: number; percentUsed: number } {
         const used = getStorageSize();
         return {
@@ -126,9 +110,6 @@ export const storage = {
         };
     },
     
-    /**
-     * Clear all extension storage
-     */
     clearAll(): void {
         try {
             const keysToRemove: string[] = [];

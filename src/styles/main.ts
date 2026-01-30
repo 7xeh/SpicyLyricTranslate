@@ -1,13 +1,4 @@
-/**
- * CSS Styles for Spicy Lyric Translater
- * Minimal styles to avoid interference with Spicy Lyrics' own styling
- */
-
 export const styles = `
-/* Spicy Lyric Translater - Minimal Styles */
-/* Works in main page, Cinema View, and PIP popout */
-
-/* Loading animation for translate button */
 @keyframes spicy-translate-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
@@ -17,12 +8,10 @@ export const styles = `
     animation: spicy-translate-spin 1s linear infinite;
 }
 
-/* Active state for translate button */
 #TranslateToggle.active svg {
     color: var(--spice-button-active, #1db954);
 }
 
-/* Error state for translate button */
 #TranslateToggle.error svg {
     color: #e74c3c;
 }
@@ -37,7 +26,6 @@ export const styles = `
     40%, 80% { transform: translateX(3px); }
 }
 
-/* Settings modal styles - these are in our own modal */
 .spicy-translate-settings {
     padding: 16px;
 }
@@ -117,11 +105,6 @@ export const styles = `
     transform: translateX(24px);
 }
 
-/* ========================================
-   TRANSLATION DISPLAY STYLES
-   ======================================== */
-
-/* Hide original content completely when showing translation only */
 .spicy-hidden-original {
     display: none !important;
     visibility: hidden !important;
@@ -132,15 +115,11 @@ export const styles = `
     pointer-events: none !important;
 }
 
-/* Translated text - inherits styling from parent line */
-/* pointer-events: none ensures we don't interfere with Spicy Lyrics click handlers */
 .spicy-translation-text {
     display: inline !important;
     pointer-events: none !important;
-    /* Inherit all text styling from parent */
 }
 
-/* Wrapper for original content (used for line-synced lyrics) */
 .spicy-original-wrapper {
     display: contents;
 }
@@ -149,19 +128,11 @@ export const styles = `
     display: none !important;
 }
 
-/* Line that has been translated */
-.line.spicy-translated {
-    /* Don't change display - let Spicy Lyrics control it */
-}
+.line.spicy-translated {}
 
-/* Ensure translation container doesn't interfere with clicks */
 .spicy-translation-container {
     pointer-events: none !important;
 }
-
-/* ========================================
-   CACHE VIEWER STYLES
-   ======================================== */
 
 .cache-item:hover {
     background: rgba(255, 255, 255, 0.05);
@@ -177,40 +148,26 @@ export const styles = `
     background: #e74c3c !important;
 }
 
-/* ========================================
-   CONTEXT-SPECIFIC STYLES
-   For main page, Cinema View, and PIP
-   ======================================== */
-
-/* Main page styles */
 #SpicyLyricsPage .LyricsContent .line .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
-/* Cinema View / Fullscreen styles */
 #SpicyLyricsPage.ForcedCompactMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
-/* PIP popout styles */
 .spicy-pip-wrapper .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
-/* Sidebar mode styles */
 #SpicyLyricsPage.SidebarMode .spicy-translation-text {
     color: inherit;
     font-family: inherit;
 }
 
-/* ========================================
-   CONNECTION INDICATOR STYLES
-   ======================================== */
-
-/* Spinner animation */
 @keyframes slt-ci-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
@@ -220,7 +177,6 @@ export const styles = `
     animation: slt-ci-spin 1s linear infinite;
 }
 
-/* Main container - inside topbar content right container */
 .SLT_ConnectionIndicator {
     display: flex;
     align-items: center;
@@ -249,7 +205,6 @@ export const styles = `
     gap: 8px;
 }
 
-/* The status dot */
 .slt-ci-dot {
     width: 8px;
     height: 8px;
@@ -294,7 +249,6 @@ export const styles = `
     50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* Expanded content - hidden by default */
 .slt-ci-expanded {
     display: flex;
     align-items: center;
@@ -343,7 +297,6 @@ export const styles = `
     opacity: 0.7;
 }
 
-/* Active viewers count - green highlight */
 .slt-ci-users-count.slt-ci-active .slt-ci-active-count {
     color: #1db954;
 }
@@ -352,11 +305,87 @@ export const styles = `
     color: #1db954;
     opacity: 0.9;
 }
+
+body.slt-overlay-active .LyricsContent {}
+
+.spicy-translate-overlay {
+    pointer-events: none;
+    user-select: none;
+    z-index: 10;
+}
+
+.slt-interleaved-translation {
+    display: block;
+    font-size: calc(0.85em * var(--slt-overlay-font-scale, 0.9));
+    color: var(--spice-subtext, rgba(255, 255, 255, 0.7));
+    opacity: var(--slt-overlay-opacity, 0.85);
+    margin-top: 4px;
+    margin-bottom: 8px;
+    padding: 0 2px;
+    line-height: 1.3;
+    pointer-events: none;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    position: relative;
+    z-index: 1;
+}
+
+.line.active .slt-interleaved-translation,
+.line.current .slt-interleaved-translation,
+.slt-interleaved-translation.active {
+    color: var(--spice-text, #fff);
+    opacity: 1;
+}
+
+.line:not(.active):not(.current) .slt-interleaved-translation {
+    opacity: 0.5;
+}
+
+.slt-side-by-side-container {
+    display: flex;
+    gap: 24px;
+}
+
+.spicy-translate-overlay.overlay-mode-side-by-side {
+    flex: 0 0 40%;
+    max-width: 40%;
+    overflow-y: auto;
+    padding: 16px;
+    opacity: var(--slt-overlay-opacity, 0.85);
+}
+
+.spicy-translate-overlay.overlay-mode-side-by-side .slt-overlay-line {
+    padding: 8px 0;
+    font-size: calc(1em * var(--slt-overlay-font-scale, 0.9));
+    color: var(--spice-subtext, rgba(255, 255, 255, 0.6));
+    transition: color 0.2s ease, background 0.2s ease;
+    border-radius: 4px;
+}
+
+.spicy-translate-overlay.overlay-mode-side-by-side .slt-overlay-line.active {
+    color: var(--spice-text, #fff);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.spicy-pip-wrapper .slt-interleaved-translation {
+    font-size: calc(0.75em * var(--slt-overlay-font-scale, 0.9));
+    margin-top: 2px;
+    margin-bottom: 4px;
+}
+
+.Cinema--Container .slt-interleaved-translation,
+#SpicyLyricsPage.ForcedCompactMode .slt-interleaved-translation {
+    font-size: calc(0.8em * var(--slt-overlay-font-scale, 0.9));
+}
+
+#SpicyLyricsPage.SidebarMode .slt-interleaved-translation {
+    font-size: calc(0.7em * var(--slt-overlay-font-scale, 0.9));
+    margin-top: 2px;
+    margin-bottom: 4px;
+}
 `;
 
-/**
- * Inject styles into the document
- */
+import { getOverlayStyles } from '../utils/translationOverlay';
+
 export function injectStyles(): void {
     const existingStyle = document.getElementById('spicy-lyric-translater-styles');
     if (existingStyle) {
@@ -365,13 +394,10 @@ export function injectStyles(): void {
 
     const styleElement = document.createElement('style');
     styleElement.id = 'spicy-lyric-translater-styles';
-    styleElement.textContent = styles;
+    styleElement.textContent = styles + getOverlayStyles();
     document.head.appendChild(styleElement);
 }
 
-/**
- * Remove styles from the document
- */
 export function removeStyles(): void {
     const styleElement = document.getElementById('spicy-lyric-translater-styles');
     if (styleElement) {

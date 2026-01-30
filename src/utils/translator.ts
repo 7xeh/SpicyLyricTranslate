@@ -1,16 +1,21 @@
-/**
- * Translation Service for Spicy Lyric Translater
- * Uses multiple translation APIs with fallback support
- */
-
 import storage from './storage';
+import { debug, warn, error as logError, info } from './debug';
+import { 
+    getTrackCache, 
+    setTrackCache, 
+    clearAllTrackCache, 
+    getTrackCacheStats, 
+    getAllCachedTracks, 
+    deleteTrackCache,
+    getCurrentTrackUri 
+} from './trackCache';
 
 export interface TranslationResult {
     originalText: string;
     translatedText: string;
     detectedLanguage?: string;
     targetLanguage: string;
-    wasTranslated?: boolean; // false if source language matches target
+    wasTranslated?: boolean;
 }
 
 export interface TranslationCache {
@@ -21,31 +26,23 @@ export interface TranslationCache {
     };
 }
 
-// API preference types
 export type ApiPreference = 'google' | 'libretranslate' | 'custom';
 
-// API settings
 let preferredApi: ApiPreference = 'google';
 let customApiUrl: string = '';
 
-// Rate limiting configuration
 const RATE_LIMIT = {
-    minDelayMs: 100,      // Minimum delay between API calls
-    maxDelayMs: 2000,     // Maximum delay (for exponential backoff)
-    maxRetries: 3,        // Maximum retry attempts
-    backoffMultiplier: 2  // Exponential backoff multiplier
+    minDelayMs: 100,
+    maxDelayMs: 2000,
+    maxRetries: 3,
+    backoffMultiplier: 2
 };
 
-// Last API call timestamp for rate limiting
 let lastApiCallTime = 0;
 
-// Use a unique separator that won't appear in lyrics
-const BATCH_SEPARATOR = '\n\u200B\u2063\u200B\n'; // Zero-width space + invisible separator + zero-width space
+const BATCH_SEPARATOR = '\n\u200B\u2063\u200B\n';
 const BATCH_SEPARATOR_REGEX = /\n?[\u200B\u2063]+\n?/g;
 
-/**
- * Delay execution with rate limiting
- */
 async function rateLimitedDelay(): Promise<void> {
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCallTime;
@@ -55,9 +52,6 @@ async function rateLimitedDelay(): Promise<void> {
     lastApiCallTime = Date.now();
 }
 
-/**
- * Retry with exponential backoff
- */
 async function retryWithBackoff<T>(
     fn: () => Promise<T>,
     maxRetries: number = RATE_LIMIT.maxRetries,
@@ -72,7 +66,6 @@ async function retryWithBackoff<T>(
         } catch (error) {
             lastError = error as Error;
             
-            // Don't retry on client errors (4xx)
             if (error instanceof Error && error.message.includes('40')) {
                 throw error;
             }
@@ -82,7 +75,7 @@ async function retryWithBackoff<T>(
                     baseDelay * Math.pow(RATE_LIMIT.backoffMultiplier, attempt),
                     RATE_LIMIT.maxDelayMs
                 );
-                console.log(`[SpicyLyricTranslater] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+                debug(`Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
@@ -91,27 +84,20 @@ async function retryWithBackoff<T>(
     throw lastError || new Error('All retry attempts failed');
 }
 
-/**
- * Set the preferred API for translations
- */
 export function setPreferredApi(api: ApiPreference, customUrl?: string): void {
     preferredApi = api;
     if (customUrl !== undefined) {
         customApiUrl = customUrl;
     }
-    console.log(`[SpicyLyricTranslater] API preference set to: ${api}${api === 'custom' ? ` (${customUrl})` : ''}`);
+    info(`API preference set to: ${api}${api === 'custom' ? ` (${customUrl})` : ''}`);
 }
 
-/**
- * Get current API preference
- */
 export function getPreferredApi(): { api: ApiPreference; customUrl: string } {
-    return { api: preferredApi, customUrl };
+    return { api: preferredApi, customUrl: customApiUrl };
 }
 
-// Cache expiry time: 7 days
 const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000;
-const MAX_CACHE_ENTRIES = 500; // Reduced from 1000 to prevent excessive storage use
+const MAX_CACHE_ENTRIES = 500;
 
 // Supported languages (sorted alphabetically by name)
 export const SUPPORTED_LANGUAGES: { code: string; name: string }[] = [
@@ -224,16 +210,12 @@ export const SUPPORTED_LANGUAGES: { code: string; name: string }[] = [
     { code: 'zu', name: 'Zulu' },
 ];
 
-/**
- * Get cached translation
- */
 function getCachedTranslation(text: string, targetLang: string): string | null {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const key = `${targetLang}:${text}`;
     const cached = cache[key];
     
     if (cached) {
-        // Check if cache is still valid
         if (Date.now() - cached.timestamp < CACHE_EXPIRY) {
             return cached.translation;
         }
@@ -242,9 +224,6 @@ function getCachedTranslation(text: string, targetLang: string): string | null {
     return null;
 }
 
-/**
- * Cache a translation
- */
 function cacheTranslation(text: string, targetLang: string, translation: string, api?: string): void {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const key = `${targetLang}:${text}`;
@@ -255,10 +234,8 @@ function cacheTranslation(text: string, targetLang: string, translation: string,
         api
     };
     
-    // Limit cache size
     const keys = Object.keys(cache);
     if (keys.length > MAX_CACHE_ENTRIES) {
-        // Remove oldest entries + expired entries
         const now = Date.now();
         const sorted = keys
             .map(k => ({ key: k, entry: cache[k] }))
@@ -287,10 +264,6 @@ function cacheTranslation(text: string, targetLang: string, translation: string,
     storage.setJSON('translation-cache', cache);
 }
 
-/**
- * Translate using Google Translate (free API via scraping)
- * Returns both the translation and detected source language
- */
 async function translateWithGoogle(text: string, targetLang: string): Promise<{ translation: string; detectedLang: string }> {
     const encodedText = encodeURIComponent(text);
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodedText}`;
@@ -302,8 +275,6 @@ async function translateWithGoogle(text: string, targetLang: string): Promise<{ 
     
     const data = await response.json();
     
-    // Parse the response - Google returns an array of arrays
-    // data[0] contains translation segments, data[2] contains detected language
     const detectedLang = data[2] || 'unknown';
     
     if (data && data[0]) {
@@ -321,11 +292,7 @@ async function translateWithGoogle(text: string, targetLang: string): Promise<{ 
     throw new Error('Invalid response from Google Translate');
 }
 
-/**
- * Translate using LibreTranslate (fallback)
- */
 async function translateWithLibreTranslate(text: string, targetLang: string): Promise<string> {
-    // Using a public LibreTranslate instance
     const url = 'https://libretranslate.de/translate';
     
     const response = await fetch(url, {
@@ -349,17 +316,11 @@ async function translateWithLibreTranslate(text: string, targetLang: string): Pr
     return data.translatedText;
 }
 
-/**
- * Translate using a custom 3rd party API
- * Supports common translation API formats
- */
 async function translateWithCustomApi(text: string, targetLang: string): Promise<{ translation: string; detectedLang?: string }> {
     if (!customApiUrl) {
         throw new Error('Custom API URL not configured');
     }
     
-    // Try to detect API format and make appropriate request
-    // Format 1: POST with JSON body (most common)
     try {
         const response = await fetch(customApiUrl, {
             method: 'POST',
@@ -368,7 +329,7 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
             },
             body: JSON.stringify({
                 text: text,
-                q: text, // Alternative field name
+                q: text,
                 source: 'auto',
                 source_lang: 'auto',
                 sourceLang: 'auto',
@@ -386,7 +347,6 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
         
         const data = await response.json();
         
-        // Try to extract translation from common response formats
         const translation = data.translatedText || 
                           data.translated_text || 
                           data.translation || 
@@ -405,15 +365,11 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
         
         throw new Error('Could not parse translation from API response');
     } catch (error) {
-        console.error('[SpicyLyricTranslater] Custom API error:', error);
+        logError('Custom API error:', error);
         throw error;
     }
 }
 
-/**
- * Check if detected language matches target language
- * Handles language variants (e.g., zh and zh-TW both start with 'zh')
- */
 function isSameLanguage(detected: string, target: string): boolean {
     if (!detected || detected === 'unknown') return false;
     
@@ -423,13 +379,7 @@ function isSameLanguage(detected: string, target: string): boolean {
     return normalizedDetected === normalizedTarget;
 }
 
-/**
- * Main translation function with caching and fallback
- * Skips translation if source language matches target language
- * Uses preferred API based on settings
- */
 export async function translateText(text: string, targetLang: string): Promise<TranslationResult> {
-    // Check cache first
     const cached = getCachedTranslation(text, targetLang);
     if (cached) {
         return {
@@ -439,7 +389,6 @@ export async function translateText(text: string, targetLang: string): Promise<T
         };
     }
     
-    // Define translation attempts based on preferred API
     const tryGoogle = async () => {
         const result = await translateWithGoogle(text, targetLang);
         return { translation: result.translation, detectedLang: result.detectedLang };
@@ -455,7 +404,6 @@ export async function translateText(text: string, targetLang: string): Promise<T
         return { translation: result.translation, detectedLang: result.detectedLang };
     };
     
-    // Order APIs based on preference
     let primaryApi: () => Promise<{ translation: string; detectedLang?: string }>;
     let fallbackApis: { name: string, fn: () => Promise<{ translation: string; detectedLang?: string }> }[] = [];
     
@@ -475,11 +423,9 @@ export async function translateText(text: string, targetLang: string): Promise<T
             break;
     }
     
-    // Try primary API first
     try {
         const result = await primaryApi();
         
-        // Skip if source language is same as target
         if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
             cacheTranslation(text, targetLang, text, preferredApi);
             return {
@@ -500,7 +446,7 @@ export async function translateText(text: string, targetLang: string): Promise<T
             wasTranslated: true
         };
     } catch (primaryError) {
-        console.warn(`[SpicyLyricTranslater] Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
+        warn(`Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
         
         // Try fallback APIs
         for (const fallbackApi of fallbackApis) {
@@ -527,24 +473,38 @@ export async function translateText(text: string, targetLang: string): Promise<T
                     wasTranslated: true
                 };
             } catch (fallbackError) {
-                console.warn(`[SpicyLyricTranslater] Fallback API (${fallbackApi.name}) failed:`, fallbackError);
+                warn(`Fallback API (${fallbackApi.name}) failed:`, fallbackError);
                 continue;
             }
         }
         
-        console.error('[SpicyLyricTranslater] All translation services failed');
+        logError('All translation services failed');
         throw new Error('Translation failed. Please try again later.');
     }
 }
 
-/**
- * Translate multiple lines of lyrics
- * Uses batching with invisible separators for efficiency
- */
-export async function translateLyrics(lines: string[], targetLang: string): Promise<TranslationResult[]> {
-    const results: TranslationResult[] = [];
+export async function translateLyrics(
+    lines: string[], 
+    targetLang: string, 
+    trackUri?: string,
+    detectedSourceLang?: string
+): Promise<TranslationResult[]> {
+    const currentTrackUri = trackUri || getCurrentTrackUri();
     
-    // Check cache first and separate cached vs uncached lines
+    if (currentTrackUri) {
+        const trackCache = getTrackCache(currentTrackUri, targetLang);
+        if (trackCache && trackCache.lines.length === lines.length) {
+            debug(`Full track cache hit: ${currentTrackUri} (${trackCache.lines.length} lines)`);
+            return lines.map((line, index) => ({
+                originalText: line,
+                translatedText: trackCache.lines[index] || line,
+                targetLanguage: targetLang,
+                wasTranslated: trackCache.lines[index] !== line
+            }));
+        }
+    }
+    
+    const results: TranslationResult[] = [];
     const cachedResults: Map<number, TranslationResult> = new Map();
     const uncachedLines: { index: number; text: string }[] = [];
     
@@ -571,22 +531,31 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
         }
     });
     
-    // If all lines are cached, return early
     if (uncachedLines.length === 0) {
-        console.log('[SpicyLyricTranslater] All lines found in cache');
-        return lines.map((_, index) => cachedResults.get(index)!);
+        debug('All lines found in cache');
+        const finalResults = lines.map((_, index) => cachedResults.get(index)!);
+        
+        if (currentTrackUri) {
+            const translatedLines = finalResults.map(r => r.translatedText);
+            setTrackCache(currentTrackUri, targetLang, detectedSourceLang || 'auto', translatedLines, preferredApi);
+        }
+        
+        return finalResults;
     }
     
-    console.log(`[SpicyLyricTranslater] ${cachedResults.size} cached, ${uncachedLines.length} to translate`);
+    debug(`${cachedResults.size} cached, ${uncachedLines.length} to translate`);
     
-    // Batch translate uncached lines using invisible separator
     const combinedText = uncachedLines.map(l => l.text).join(BATCH_SEPARATOR);
+    let detectedLang = detectedSourceLang || 'auto';
     
     try {
         const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
         const translatedLines = result.translatedText.split(BATCH_SEPARATOR_REGEX);
         
-        // Map translations back to their indices
+        if (result.detectedLanguage) {
+            detectedLang = result.detectedLanguage;
+        }
+        
         uncachedLines.forEach((item, i) => {
             const translation = translatedLines[i]?.trim() || item.text;
             cachedResults.set(item.index, {
@@ -597,9 +566,8 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
             });
         });
     } catch (error) {
-        console.error('[SpicyLyricTranslater] Batch translation failed, falling back to line-by-line:', error);
+        logError('Batch translation failed, falling back to line-by-line:', error);
         
-        // Fall back to translating line by line with delay between calls
         for (const item of uncachedLines) {
             try {
                 const result = await retryWithBackoff(() => translateText(item.text, targetLang));
@@ -615,52 +583,64 @@ export async function translateLyrics(lines: string[], targetLang: string): Prom
         }
     }
     
-    // Build final results array in order
     for (let i = 0; i < lines.length; i++) {
         results.push(cachedResults.get(i)!);
+    }
+    
+    if (currentTrackUri && results.length > 0) {
+        const translatedLines = results.map(r => r.translatedText);
+        setTrackCache(currentTrackUri, targetLang, detectedLang, translatedLines, preferredApi);
     }
     
     return results;
 }
 
-/**
- * Clear translation cache
- */
 export function clearTranslationCache(): void {
     storage.remove('translation-cache');
+    clearAllTrackCache();
 }
 
-/**
- * Get cache statistics
- */
-export function getCacheStats(): { entries: number; oldestTimestamp: number | null; sizeBytes: number } {
-    const cache = storage.getJSON<TranslationCache>('translation-cache', {});
-    const keys = Object.keys(cache);
+export function getCacheStats(): { 
+    entries: number; 
+    oldestTimestamp: number | null; 
+    sizeBytes: number;
+    trackCount?: number;
+    totalLines?: number;
+} {
+    const lineCache = storage.getJSON<TranslationCache>('translation-cache', {});
+    const lineKeys = Object.keys(lineCache);
     
-    if (keys.length === 0) {
-        return { entries: 0, oldestTimestamp: null, sizeBytes: 0 };
+    const trackStats = getTrackCacheStats();
+    
+    let lineSizeBytes = 0;
+    let lineOldestTimestamp: number | null = null;
+    
+    if (lineKeys.length > 0) {
+        const timestamps = lineKeys.map(k => lineCache[k].timestamp);
+        lineSizeBytes = JSON.stringify(lineCache).length * 2;
+        lineOldestTimestamp = Math.min(...timestamps);
     }
     
-    const timestamps = keys.map(k => cache[k].timestamp);
-    const sizeBytes = JSON.stringify(cache).length * 2; // UTF-16
+    const oldestTimestamp = lineOldestTimestamp !== null && trackStats.oldestTimestamp !== null
+        ? Math.min(lineOldestTimestamp, trackStats.oldestTimestamp)
+        : lineOldestTimestamp || trackStats.oldestTimestamp;
     
     return {
-        entries: keys.length,
-        oldestTimestamp: Math.min(...timestamps),
-        sizeBytes
+        entries: lineKeys.length + trackStats.trackCount,
+        oldestTimestamp,
+        sizeBytes: lineSizeBytes + trackStats.sizeBytes,
+        trackCount: trackStats.trackCount,
+        totalLines: trackStats.totalLines
     };
 }
 
-/**
- * Get all cached translations for viewing
- */
 export function getCachedTranslations(): Array<{ original: string; translated: string; language: string; date: Date; api?: string }> {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const entries: Array<{ original: string; translated: string; language: string; date: Date; api?: string }> = [];
     
     for (const key of Object.keys(cache)) {
         const [lang, ...textParts] = key.split(':');
-        const original = textParts.join(':'); // Rejoin in case text had colons
+        const original = textParts.join(':');
         entries.push({
             original,
             translated: cache[key].translation,
@@ -670,15 +650,11 @@ export function getCachedTranslations(): Array<{ original: string; translated: s
         });
     }
     
-    // Sort by date, newest first
     entries.sort((a, b) => b.date.getTime() - a.date.getTime());
     
     return entries;
 }
 
-/**
- * Delete a specific cached translation
- */
 export function deleteCachedTranslation(original: string, language: string): boolean {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const key = `${language}:${original}`;
@@ -691,12 +667,15 @@ export function deleteCachedTranslation(original: string, language: string): boo
     return false;
 }
 
-/**
- * Check if we're likely offline
- */
+export function deleteTrackCacheEntry(trackUri: string, targetLang?: string): void {
+    deleteTrackCache(trackUri, targetLang);
+}
+
 export function isOffline(): boolean {
     return typeof navigator !== 'undefined' && !navigator.onLine;
 }
+
+export { getAllCachedTracks, getTrackCacheStats };
 
 export default {
     translateText,
@@ -705,6 +684,9 @@ export default {
     getCacheStats,
     getCachedTranslations,
     deleteCachedTranslation,
+    deleteTrackCacheEntry,
+    getAllCachedTracks,
+    getTrackCacheStats,
     isOffline,
     setPreferredApi,
     getPreferredApi,

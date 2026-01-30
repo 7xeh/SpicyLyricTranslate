@@ -1,33 +1,21 @@
-/**
- * Settings configuration for Spicy Lyric Translater
- * Integrates with Spicetify's settings system
- */
-
 import { storage } from './storage';
 import { SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './translator';
+import { debug } from './debug';
 
-// Dynamic import for spcr-settings (may not be available)
 declare const require: any;
 
-/**
- * Register extension settings with Spicetify
- */
 export async function registerSettings(): Promise<void> {
-    // Wait for Spicetify
     while (typeof Spicetify === 'undefined' || !Spicetify.Platform) {
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Check if the spcr-settings module is available (from Spicetify Marketplace)
     try {
-        // Try to dynamically require the settings module
         const spcrSettings = typeof require !== 'undefined' ? require('spcr-settings') : null;
         const SettingsSection = spcrSettings?.SettingsSection;
         
         if (SettingsSection) {
             const settings = new SettingsSection('Spicy Lyric Translater', 'spicy-lyric-translater-settings');
             
-            // Target Language
             const languageNames = SUPPORTED_LANGUAGES.map(l => l.name);
             const currentLangIndex = SUPPORTED_LANGUAGES.findIndex(
                 l => l.code === (storage.get('target-language') || 'en')
@@ -47,7 +35,6 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Preferred API
             const apiOptions = ['Google Translate', 'LibreTranslate', 'Custom API'];
             const currentApiIndex = (() => {
                 const api = storage.get('preferred-api') || 'google';
@@ -72,7 +59,6 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Custom API URL
             settings.addInput(
                 'custom-api-url',
                 'Custom API URL',
@@ -87,7 +73,6 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Auto-Translate
             settings.addToggle(
                 'auto-translate',
                 'Auto-Translate on Song Change',
@@ -98,7 +83,6 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Show Notifications
             settings.addToggle(
                 'show-notifications',
                 'Show Notifications',
@@ -109,7 +93,6 @@ export async function registerSettings(): Promise<void> {
                 }
             );
             
-            // Clear Cache Button
             settings.addButton(
                 'clear-cache',
                 'Clear Translation Cache',
@@ -124,11 +107,10 @@ export async function registerSettings(): Promise<void> {
             );
             
             settings.pushSettings();
-            console.log('[SpicyLyricTranslater] Settings registered successfully');
+            debug('Settings registered successfully');
         }
     } catch (e) {
-        // Settings module not available, settings will be managed through the context menu
-        console.log('[SpicyLyricTranslater] Using built-in settings modal (spcr-settings not available)');
+        debug('Using built-in settings modal (spcr-settings not available)');
     }
 }
 

@@ -1,0 +1,330 @@
+import { debug, warn, info } from './debug';
+
+const CACHE_KEY_PREFIX = 'slt-track-cache:';
+const CACHE_INDEX_KEY = 'slt-track-cache-index';
+const CACHE_MAX_TRACKS = 100;
+const CACHE_EXPIRY_DAYS = 14;
+const CACHE_EXPIRY_MS = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+interface TrackCacheEntry {
+    lang: string;
+    targetLang: string;
+    lines: string[];
+    timestamp: number;
+    api?: string;
+}
+
+interface CacheIndex {
+    trackUris: string[];
+}
+
+function getStorage(): typeof localStorage | null {
+    if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
+        return Spicetify.LocalStorage as unknown as typeof localStorage;
+    }
+    if (typeof localStorage !== 'undefined') {
+        return localStorage;
+    }
+    return null;
+}
+
+function getCacheIndex(): CacheIndex {
+    const storage = getStorage();
+    if (!storage) return { trackUris: [] };
+    
+    try {
+        const indexStr = storage.getItem(CACHE_INDEX_KEY);
+        if (indexStr) {
+            return JSON.parse(indexStr);
+        }
+    } catch (e) {
+        warn('Failed to parse cache index:', e);
+    }
+    return { trackUris: [] };
+}
+
+function saveCacheIndex(index: CacheIndex): void {
+    const storage = getStorage();
+    if (!storage) return;
+    
+    try {
+        storage.setItem(CACHE_INDEX_KEY, JSON.stringify(index));
+    } catch (e) {
+        warn('Failed to save cache index:', e);
+    }
+}
+
+function normalizeTrackUri(uri: string): string {
+    return uri.replace(/[^a-zA-Z0-9:]/g, '_');
+}
+
+function getCacheKey(trackUri: string, targetLang: string): string {
+    return `${CACHE_KEY_PREFIX}${normalizeTrackUri(trackUri)}:${targetLang}`;
+}
+
+export function getTrackCache(trackUri: string, targetLang: string): TrackCacheEntry | null {
+    const storage = getStorage();
+    if (!storage || !trackUri) return null;
+    
+    const cacheKey = getCacheKey(trackUri, targetLang);
+    
+    try {
+        const entryStr = storage.getItem(cacheKey);
+        if (!entryStr) return null;
+        
+        const entry: TrackCacheEntry = JSON.parse(entryStr);
+        
+        if (Date.now() - entry.timestamp > CACHE_EXPIRY_MS) {
+            debug(`Track cache expired for ${trackUri}`);
+            storage.removeItem(cacheKey);
+            return null;
+        }
+        
+        debug(`Track cache hit: ${trackUri} (${entry.lines.length} lines, target: ${targetLang})`);
+        return entry;
+    } catch (e) {
+        warn('Failed to read track cache:', e);
+        return null;
+    }
+}
+
+export function setTrackCache(
+    trackUri: string, 
+    targetLang: string, 
+    sourceLang: string,
+    lines: string[],
+    api?: string
+): void {
+    const storage = getStorage();
+    if (!storage || !trackUri || !lines.length) return;
+    
+    const cacheKey = getCacheKey(trackUri, targetLang);
+    
+    const entry: TrackCacheEntry = {
+        lang: sourceLang,
+        targetLang: targetLang,
+        lines: lines,
+        timestamp: Date.now(),
+        api: api
+    };
+    
+    try {
+        storage.setItem(cacheKey, JSON.stringify(entry));
+        debug(`Track cache set: ${trackUri} (${lines.length} lines, ${sourceLang} -> ${targetLang})`);
+        
+        const index = getCacheIndex();
+        const fullKey = `${trackUri}:${targetLang}`;
+        
+        if (!index.trackUris.includes(fullKey)) {
+            index.trackUris.push(fullKey);
+            
+            if (index.trackUris.length > CACHE_MAX_TRACKS) {
+                const oldestKey = index.trackUris.shift();
+                if (oldestKey) {
+                    const [oldUri, oldLang] = oldestKey.split(':').slice(0, -1).join(':').split(':');
+                    const oldCacheKey = getCacheKey(oldUri || oldestKey, oldLang || targetLang);
+                    storage.removeItem(oldCacheKey);
+                    debug(`Evicted oldest track cache: ${oldestKey}`);
+                }
+            }
+            
+            saveCacheIndex(index);
+        }
+    } catch (e) {
+        warn('Failed to set track cache:', e);
+        
+        if (e instanceof Error && e.name === 'QuotaExceededError') {
+            pruneOldestEntries(10);
+            try {
+                storage.setItem(cacheKey, JSON.stringify(entry));
+            } catch (retryError) {
+                warn('Still failed after pruning:', retryError);
+            }
+        }
+    }
+}
+
+export function hasTrackCache(trackUri: string, targetLang: string): boolean {
+    return getTrackCache(trackUri, targetLang) !== null;
+}
+
+export function deleteTrackCache(trackUri: string, targetLang?: string): void {
+    const storage = getStorage();
+    if (!storage || !trackUri) return;
+    
+    const index = getCacheIndex();
+    
+    if (targetLang) {
+        const cacheKey = getCacheKey(trackUri, targetLang);
+        storage.removeItem(cacheKey);
+        
+        const fullKey = `${trackUri}:${targetLang}`;
+        index.trackUris = index.trackUris.filter(k => k !== fullKey);
+    } else {
+        const keysToRemove = index.trackUris.filter(k => k.startsWith(trackUri + ':'));
+        keysToRemove.forEach(k => {
+            const [uri, lang] = [k.substring(0, k.lastIndexOf(':')), k.substring(k.lastIndexOf(':') + 1)];
+            const cacheKey = getCacheKey(uri, lang);
+            storage.removeItem(cacheKey);
+        });
+        index.trackUris = index.trackUris.filter(k => !k.startsWith(trackUri + ':'));
+    }
+    
+    saveCacheIndex(index);
+    debug(`Deleted track cache for ${trackUri}${targetLang ? `:${targetLang}` : ' (all languages)'}`);
+}
+
+function pruneOldestEntries(count: number): void {
+    const storage = getStorage();
+    if (!storage) return;
+    
+    const index = getCacheIndex();
+    const toRemove = index.trackUris.splice(0, count);
+    
+    toRemove.forEach(fullKey => {
+        const lastColonIdx = fullKey.lastIndexOf(':');
+        const uri = fullKey.substring(0, lastColonIdx);
+        const lang = fullKey.substring(lastColonIdx + 1);
+        const cacheKey = getCacheKey(uri, lang);
+        storage.removeItem(cacheKey);
+    });
+    
+    saveCacheIndex(index);
+    debug(`Pruned ${toRemove.length} oldest cache entries`);
+}
+
+export function clearAllTrackCache(): void {
+    const storage = getStorage();
+    if (!storage) return;
+    
+    const index = getCacheIndex();
+    
+    index.trackUris.forEach(fullKey => {
+        const lastColonIdx = fullKey.lastIndexOf(':');
+        const uri = fullKey.substring(0, lastColonIdx);
+        const lang = fullKey.substring(lastColonIdx + 1);
+        const cacheKey = getCacheKey(uri, lang);
+        storage.removeItem(cacheKey);
+    });
+    
+    storage.removeItem(CACHE_INDEX_KEY);
+    info('Track cache cleared');
+}
+
+export function getTrackCacheStats(): { 
+    trackCount: number; 
+    totalLines: number; 
+    oldestTimestamp: number | null;
+    sizeBytes: number;
+} {
+    const storage = getStorage();
+    if (!storage) return { trackCount: 0, totalLines: 0, oldestTimestamp: null, sizeBytes: 0 };
+    
+    const index = getCacheIndex();
+    let totalLines = 0;
+    let oldestTimestamp: number | null = null;
+    let sizeBytes = 0;
+    
+    index.trackUris.forEach(fullKey => {
+        const lastColonIdx = fullKey.lastIndexOf(':');
+        const uri = fullKey.substring(0, lastColonIdx);
+        const lang = fullKey.substring(lastColonIdx + 1);
+        const cacheKey = getCacheKey(uri, lang);
+        
+        try {
+            const entryStr = storage.getItem(cacheKey);
+            if (entryStr) {
+                sizeBytes += entryStr.length * 2;
+                const entry: TrackCacheEntry = JSON.parse(entryStr);
+                totalLines += entry.lines.length;
+                
+                if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
+                    oldestTimestamp = entry.timestamp;
+                }
+            }
+        } catch (e) {
+            // Skip invalid entries
+        }
+    });
+    
+    return {
+        trackCount: index.trackUris.length,
+        totalLines,
+        oldestTimestamp,
+        sizeBytes
+    };
+}
+
+export function getAllCachedTracks(): Array<{
+    trackUri: string;
+    targetLang: string;
+    sourceLang: string;
+    lineCount: number;
+    timestamp: number;
+    api?: string;
+}> {
+    const storage = getStorage();
+    if (!storage) return [];
+    
+    const index = getCacheIndex();
+    const tracks: Array<{
+        trackUri: string;
+        targetLang: string;
+        sourceLang: string;
+        lineCount: number;
+        timestamp: number;
+        api?: string;
+    }> = [];
+    
+    index.trackUris.forEach(fullKey => {
+        const lastColonIdx = fullKey.lastIndexOf(':');
+        const uri = fullKey.substring(0, lastColonIdx);
+        const lang = fullKey.substring(lastColonIdx + 1);
+        const cacheKey = getCacheKey(uri, lang);
+        
+        try {
+            const entryStr = storage.getItem(cacheKey);
+            if (entryStr) {
+                const entry: TrackCacheEntry = JSON.parse(entryStr);
+                tracks.push({
+                    trackUri: uri,
+                    targetLang: lang,
+                    sourceLang: entry.lang,
+                    lineCount: entry.lines.length,
+                    timestamp: entry.timestamp,
+                    api: entry.api
+                });
+            }
+        } catch (e) {
+            // Skip invalid entries
+        }
+    });
+    
+    return tracks.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function getCurrentTrackUri(): string | null {
+    try {
+        if (typeof Spicetify !== 'undefined' && 
+            Spicetify.Player && 
+            Spicetify.Player.data && 
+            Spicetify.Player.data.item &&
+            Spicetify.Player.data.item.uri) {
+            return Spicetify.Player.data.item.uri;
+        }
+    } catch (e) {
+        warn('Failed to get current track URI:', e);
+    }
+    return null;
+}
+
+export default {
+    getTrackCache,
+    setTrackCache,
+    hasTrackCache,
+    deleteTrackCache,
+    clearAllTrackCache,
+    getTrackCacheStats,
+    getAllCachedTracks,
+    getCurrentTrackUri
+};

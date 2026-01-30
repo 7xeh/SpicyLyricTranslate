@@ -1,19 +1,26 @@
-/**
- * Spicy Lyric Translater
- * A Spicetify extension that adds translation functionality to Spicy Lyrics
- * 
- * @author 7xeh
- * @version 1.4.3
- */
-
 import { Icons } from './utils/icons';
 import { storage } from './utils/storage';
-import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './utils/translator';
+import { translateLyrics, SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi, isOffline, getCacheStats, getCachedTranslations, deleteCachedTranslation, getTrackCacheStats } from './utils/translator';
+import { getCurrentTrackUri } from './utils/trackCache';
 import { injectStyles } from './styles/main';
 import { checkForUpdates, startUpdateChecker, getUpdateInfo, getCurrentVersion, VERSION, REPO_URL } from './utils/updater';
 import { initConnectionIndicator, getConnectionState, refreshConnection, setViewingLyrics } from './utils/connectivity';
+import { 
+    enableOverlay, 
+    disableOverlay, 
+    updateOverlayContent, 
+    clearOverlayContent,
+    isOverlayActive,
+    setOverlayConfig,
+    OverlayMode
+} from './utils/translationOverlay';
+import { 
+    detectLyricsLanguage, 
+    shouldSkipTranslation, 
+    getLanguageName 
+} from './utils/languageDetection';
+import { debug, warn, error, info } from './utils/debug';
 
-// Extension state
 interface ExtensionState {
     isEnabled: boolean;
     isTranslating: boolean;
@@ -25,7 +32,9 @@ interface ExtensionState {
     lastTranslatedSongUri: string | null;
     translatedLyrics: Map<string, string>;
     lastViewMode: string | null;
-    translationAbortController: AbortController | null;  // For cancelling translations
+    translationAbortController: AbortController | null;
+    overlayMode: OverlayMode;
+    detectedLanguage: string | null;
 }
 
 const state: ExtensionState = {
@@ -33,28 +42,25 @@ const state: ExtensionState = {
     isTranslating: false,
     targetLanguage: storage.get('target-language') || 'en',
     autoTranslate: storage.get('auto-translate') === 'true',
-    showNotifications: storage.get('show-notifications') !== 'false', // Default to true
+    showNotifications: storage.get('show-notifications') !== 'false',
     preferredApi: (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google',
     customApiUrl: storage.get('custom-api-url') || '',
     lastTranslatedSongUri: null,
     translatedLyrics: new Map(),
     lastViewMode: null,
-    translationAbortController: null
+    translationAbortController: null,
+    overlayMode: (storage.get('overlay-mode') as OverlayMode) || 'replace',
+    detectedLanguage: null
 };
 
-// DOM observer for Spicy Lyrics
 let viewControlsObserver: MutationObserver | null = null;
 let lyricsObserver: MutationObserver | null = null;
 let translateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let viewModeIntervalId: ReturnType<typeof setInterval> | null = null;
 
-// Constants
 const TRANSLATION_DEBOUNCE_MS = 300;
-const MAX_LYRICS_CACHE_SIZE = 100;  // Max lyrics per song to keep in memory
+const MAX_LYRICS_CACHE_SIZE = 100;
 
-/**
- * Format bytes to human readable string
- */
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -63,17 +69,11 @@ function formatBytes(bytes: number): string {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-/**
- * Truncate text with ellipsis
- */
 function truncateText(text: string, maxLength: number): string {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength - 3) + '...';
 }
 
-/**
- * Debounce function to prevent rapid API calls
- */
 function debounce<T extends (...args: unknown[]) => unknown>(
     func: T,
     wait: number
@@ -85,9 +85,6 @@ function debounce<T extends (...args: unknown[]) => unknown>(
     };
 }
 
-/**
- * Wait for an element to exist in the DOM
- */
 function waitForElement(selector: string, timeout: number = 10000): Promise<Element | null> {
     return new Promise((resolve) => {
         const element = document.querySelector(selector);
@@ -116,9 +113,6 @@ function waitForElement(selector: string, timeout: number = 10000): Promise<Elem
     });
 }
 
-/**
- * Check if Spicy Lyrics page is open (including Cinema View and PIP popout)
- */
 function isSpicyLyricsOpen(): boolean {
     return !!(document.querySelector('#SpicyLyricsPage') || 
               document.querySelector('.spicy-pip-wrapper #SpicyLyricsPage') ||
@@ -126,11 +120,7 @@ function isSpicyLyricsOpen(): boolean {
               document.querySelector('.spicy-lyrics-cinema'));
 }
 
-/**
- * Get the ViewControls element from Spicy Lyrics (supports main page, Cinema View, and PIP)
- */
 function getViewControls(): HTMLElement | null {
-    // Try PIP window first
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         const pipViewControls = pipWindow.document.querySelector('#SpicyLyricsPage .ViewControls');
@@ -143,27 +133,18 @@ function getViewControls(): HTMLElement | null {
            document.querySelector('.ViewControls');
 }
 
-/**
- * Get the PIP (Picture-in-Picture) window if available
- */
 function getPIPWindow(): Window | null {
     try {
-        // @ts-ignore: documentPictureInPicture is not yet standard
         const docPiP = (globalThis as any).documentPictureInPicture;
         if (docPiP && docPiP.window) {
             return docPiP.window;
         }
     } catch (e) {
-        // PIP not available
     }
     return null;
 }
 
-/**
- * Get the lyrics content container (supports main page, Cinema View, and PIP)
- */
 function getLyricsContent(): HTMLElement | null {
-    // Try PIP window first
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         const pipContent = pipWindow.document.querySelector('#SpicyLyricsPage .LyricsContent') ||
@@ -178,9 +159,6 @@ function getLyricsContent(): HTMLElement | null {
            document.querySelector('.LyricsContent');
 }
 
-/**
- * Create the translate toggle button
- */
 function createTranslateButton(): HTMLButtonElement {
     const button = document.createElement('button');
     button.id = 'TranslateToggle';
@@ -191,7 +169,6 @@ function createTranslateButton(): HTMLButtonElement {
         button.classList.add('active');
     }
     
-    // Add tooltip using Spicetify's Tippy
     if (typeof Spicetify !== 'undefined' && Spicetify.Tippy) {
         try {
             Spicetify.Tippy(button, {
@@ -199,7 +176,7 @@ function createTranslateButton(): HTMLButtonElement {
                 content: state.isEnabled ? 'Disable Translation' : 'Enable Translation'
             });
         } catch (e) {
-            console.warn('[SpicyLyricTranslater] Failed to create tooltip:', e);
+            warn('Failed to create tooltip:', e);
         }
     }
     
@@ -219,41 +196,29 @@ function createTranslateButton(): HTMLButtonElement {
     return button;
 }
 
-/**
- * Insert translate button into ViewControls
- */
 function insertTranslateButton(): void {
-    // Insert into main document
     insertTranslateButtonIntoDocument(document);
     
-    // Also insert into PIP window if available
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         insertTranslateButtonIntoDocument(pipWindow.document);
     }
 }
 
-/**
- * Insert translate button into a specific document's ViewControls
- */
 function insertTranslateButtonIntoDocument(doc: Document): void {
     const viewControls = doc.querySelector('#SpicyLyricsPage .ViewControls') ||
                          doc.querySelector('.ViewControls');
     
     if (!viewControls) return;
     
-    // Check if button already exists
     if (viewControls.querySelector('#TranslateToggle')) return;
     
-    // Find the romanization button to insert next to it
     const romanizeButton = viewControls.querySelector('#RomanizationToggle');
     const translateButton = createTranslateButton();
     
     if (romanizeButton) {
-        // Insert after romanization button
         romanizeButton.insertAdjacentElement('afterend', translateButton);
     } else {
-        // Insert at the beginning of ViewControls
         const firstChild = viewControls.firstChild;
         if (firstChild) {
             viewControls.insertBefore(translateButton, firstChild);
@@ -263,24 +228,18 @@ function insertTranslateButtonIntoDocument(doc: Document): void {
     }
 }
 
-/**
- * Update the translate button visual state
- */
 function updateButtonState(): void {
-    // Update in main document
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (button) {
         button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
         button.classList.toggle('active', state.isEnabled);
         
-        // Update tooltip
         const buttonWithTippy = button as HTMLButtonElement & { _tippy?: { setContent: (content: string) => void } };
         if (buttonWithTippy._tippy) {
             buttonWithTippy._tippy.setContent(state.isEnabled ? 'Disable Translation' : 'Enable Translation');
         }
     }
     
-    // Also update in PIP window if available
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         const pipButton = pipWindow.document.querySelector('#TranslateToggle') as HTMLButtonElement;
@@ -291,11 +250,7 @@ function updateButtonState(): void {
     }
 }
 
-/**
- * Restore button state after loading (removes loading spinner)
- */
 function restoreButtonState(): void {
-    // Restore in main document
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (button) {
         button.classList.remove('loading');
@@ -303,7 +258,6 @@ function restoreButtonState(): void {
         button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
     }
     
-    // Also restore in PIP window if available
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         const pipButton = pipWindow.document.querySelector('#TranslateToggle') as HTMLButtonElement;
@@ -315,9 +269,6 @@ function restoreButtonState(): void {
     }
 }
 
-/**
- * Set button to error state for visual feedback on translation failure
- */
 function setButtonErrorState(hasError: boolean): void {
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (button) {
@@ -333,11 +284,7 @@ function setButtonErrorState(hasError: boolean): void {
     }
 }
 
-/**
- * Handle translate toggle button click
- */
 async function handleTranslateToggle(): Promise<void> {
-    // Check for button in main document or PIP
     let button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     const pipWindow = getPIPWindow();
     if (!button && pipWindow) {
@@ -351,7 +298,6 @@ async function handleTranslateToggle(): Promise<void> {
     state.isEnabled = !state.isEnabled;
     storage.set('translation-enabled', state.isEnabled.toString());
     
-    // Update button state
     updateButtonState();
     
     if (state.isEnabled) {
@@ -361,72 +307,64 @@ async function handleTranslateToggle(): Promise<void> {
     }
 }
 
-/**
- * Wait for lyrics to load and then translate
- * Uses content hash to detect when lyrics actually change
- */
-async function waitForLyricsAndTranslate(retries: number = 10, delay: number = 500): Promise<void> {
-    console.log('[SpicyLyricTranslater] Waiting for lyrics to load...');
+async function waitForLyricsAndTranslate(retries: number = 15, delay: number = 600): Promise<void> {
+    debug('Waiting for lyrics to load...');
     
-    // Store initial content hash to detect changes
     let previousContentHash = '';
     let stableCount = 0;
-    const requiredStableIterations = 2; // Lyrics must be stable for 2 iterations
+    const requiredStableIterations = 3;
     
     for (let i = 0; i < retries; i++) {
-        // Wait for the delay
         await new Promise(resolve => setTimeout(resolve, delay));
         
-        // Check if SpicyLyrics is open
         if (!isSpicyLyricsOpen()) {
-            console.log('[SpicyLyricTranslater] SpicyLyrics not open, stopping retry');
+            debug('SpicyLyrics not open, stopping retry');
             return;
         }
         
-        // Check if we're already translating
         if (state.isTranslating) {
-            console.log('[SpicyLyricTranslater] Already translating, stopping retry');
+            debug('Already translating, stopping retry');
             return;
         }
         
-        // Try to get lyrics lines
         const lines = getLyricsLines();
         if (lines.length === 0) {
-            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: No lyrics found yet`);
+            debug(`Attempt ${i + 1}/${retries}: No lyrics found yet`);
             previousContentHash = '';
             stableCount = 0;
             continue;
         }
         
-        // Calculate content hash to detect when lyrics have actually changed/stabilized
-        const currentContent = Array.from(lines).slice(0, 5).map(l => l.textContent?.trim() || '').join('|');
-        const currentHash = currentContent.substring(0, 100);
+        const currentContent = Array.from(lines).slice(0, 8).map(l => l.textContent?.trim() || '').join('|');
+        const currentHash = currentContent.substring(0, 150);
         
         if (currentHash === previousContentHash && currentHash.length > 0) {
             stableCount++;
-            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics stable (${stableCount}/${requiredStableIterations})`);
+            debug(`Attempt ${i + 1}/${retries}: Lyrics stable (${stableCount}/${requiredStableIterations})`);
             
             if (stableCount >= requiredStableIterations) {
-                console.log(`[SpicyLyricTranslater] Found ${lines.length} stable lyrics lines after ${i + 1} attempts`);
+                debug(`Found ${lines.length} stable lyrics lines after ${i + 1} attempts`);
                 await translateCurrentLyrics();
                 return;
             }
         } else {
-            console.log(`[SpicyLyricTranslater] Attempt ${i + 1}/${retries}: Lyrics content changed, resetting stability counter`);
+            debug(`Attempt ${i + 1}/${retries}: Lyrics content changed, resetting stability counter`);
             stableCount = 0;
         }
         
         previousContentHash = currentHash;
     }
     
-    console.log('[SpicyLyricTranslater] Gave up waiting for stable lyrics after', retries, 'attempts');
+    debug('Gave up waiting for stable lyrics after', retries, 'attempts');
+    
+    const lines = getLyricsLines();
+    if (lines.length > 0 && !state.isTranslating) {
+        debug('Attempting translation with current lyrics anyway');
+        await translateCurrentLyrics();
+    }
 }
 
-/**
- * Get lyrics lines from the content (supports normal, Cinema View, and PIP)
- */
 function getLyricsLines(): NodeListOf<Element> {
-    // Try main document first with various selectors
     let lines = document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
     
     if (lines.length === 0) {
@@ -436,13 +374,11 @@ function getLyricsLines(): NodeListOf<Element> {
         lines = document.querySelectorAll('.LyricsContainer .line:not(.musical-line)');
     }
     
-    // If found in main document, return those
     if (lines.length > 0) {
-        console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines in main document`);
+        debug(`Found ${lines.length} lyrics lines in main document`);
         return lines;
     }
     
-    // Try PIP window
     const pipWindow = getPIPWindow();
     if (pipWindow) {
         lines = pipWindow.document.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
@@ -453,18 +389,15 @@ function getLyricsLines(): NodeListOf<Element> {
             lines = pipWindow.document.querySelectorAll('.LyricsContainer .line:not(.musical-line)');
         }
         if (lines.length > 0) {
-            console.log(`[SpicyLyricTranslater] Found ${lines.length} lyrics lines in PIP`);
+            debug(`Found ${lines.length} lyrics lines in PIP`);
             return lines;
         }
     }
     
-    console.log('[SpicyLyricTranslater] No lyrics lines found');
+    debug('No lyrics lines found');
     return lines;
 }
 
-/**
- * Get lyrics lines specifically from PIP window
- */
 function getPIPLyricsLines(): NodeListOf<Element> | null {
     const pipWindow = getPIPWindow();
     if (!pipWindow) return null;
@@ -480,27 +413,19 @@ function getPIPLyricsLines(): NodeListOf<Element> | null {
     return lines.length > 0 ? lines : null;
 }
 
-/**
- * Extract text from a lyrics line element
- * Handles various Spicy Lyrics formats: word-synced, syllable-synced, letter-synced (TTML), and line-synced
- */
 function extractLineText(lineElement: Element): string {
-    // Skip musical lines (dots only)
     if (lineElement.classList.contains('musical-line')) {
         return '';
     }
     
-    // For letter-synced TTML lyrics with letterGroup elements
     const letterGroups = lineElement.querySelectorAll('.letterGroup');
     if (letterGroups.length > 0) {
-        // Get text from letterGroups and standalone words
         const parts: string[] = [];
         const children = lineElement.children;
         
         for (let i = 0; i < children.length; i++) {
             const child = children[i];
             if (child.classList.contains('letterGroup')) {
-                // Extract text from letter elements
                 const letters = child.querySelectorAll('.letter');
                 const word = Array.from(letters)
                     .map(letter => letter.textContent || '')
@@ -510,7 +435,6 @@ function extractLineText(lineElement: Element): string {
                 const text = child.textContent?.trim();
                 if (text && text !== '•') parts.push(text);
             } else if (child.classList.contains('word-group')) {
-                // Handle word-group containers (multi-syllable words)
                 const text = child.textContent?.trim();
                 if (text && text !== '•') parts.push(text);
             }
@@ -521,7 +445,6 @@ function extractLineText(lineElement: Element): string {
         }
     }
     
-    // For word-synced lyrics, check for word elements
     const wordElements = lineElement.querySelectorAll('.word:not(.dot)');
     
     if (wordElements.length > 0) {
@@ -533,7 +456,6 @@ function extractLineText(lineElement: Element): string {
         if (text) return text;
     }
     
-    // For syllable lyrics
     const syllableElements = lineElement.querySelectorAll('.syllable');
     if (syllableElements.length > 0) {
         const text = Array.from(syllableElements)
@@ -544,34 +466,28 @@ function extractLineText(lineElement: Element): string {
         if (text) return text;
     }
     
-    // Fallback to direct text content (for line-synced lyrics)
     const text = lineElement.textContent?.trim() || '';
-    // Filter out lines that are just dots
     if (/^[•\s]+$/.test(text)) {
         return '';
     }
     return text;
 }
 
-/**
- * Translate current lyrics
- */
 async function translateCurrentLyrics(): Promise<void> {
     if (state.isTranslating) {
-        console.log('[SpicyLyricTranslater] Already translating, skipping');
+        debug('Already translating, skipping');
         return;
     }
     
-    // Check if offline and show appropriate message
     if (isOffline()) {
         const cacheStats = getCacheStats();
         if (cacheStats.entries > 0) {
-            console.log('[SpicyLyricTranslater] Offline - will use cached translations only');
+            debug('Offline - will use cached translations only');
             if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
                 Spicetify.showNotification('Offline - using cached translations');
             }
         } else {
-            console.log('[SpicyLyricTranslater] Offline with no cache available');
+            debug('Offline with no cache available');
             if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
                 Spicetify.showNotification('Offline - translations unavailable', true);
             }
@@ -579,24 +495,21 @@ async function translateCurrentLyrics(): Promise<void> {
         }
     }
     
-    // Get all available lines from any context
     const lines = getLyricsLines();
     
     if (lines.length === 0) {
-        console.log('[SpicyLyricTranslater] No lyrics lines found, waiting...');
+        debug('No lyrics lines found, waiting...');
         await new Promise(resolve => setTimeout(resolve, 500));
         const retryLines = getLyricsLines();
         if (retryLines.length === 0) {
-            console.log('[SpicyLyricTranslater] Still no lyrics lines found');
+            debug('Still no lyrics lines found');
             return;
         }
-        // Use retry lines
         return translateCurrentLyrics();
     }
     
     state.isTranslating = true;
     
-    // Update button to show loading state in both main and PIP
     const button = document.querySelector('#TranslateToggle') as HTMLButtonElement;
     if (button) {
         button.classList.add('loading');
@@ -612,116 +525,127 @@ async function translateCurrentLyrics(): Promise<void> {
     }
     
     try {
-        // Extract text from all lines
         const lineTexts: string[] = [];
         lines.forEach(line => {
             const text = extractLineText(line);
             lineTexts.push(text);
         });
         
-        console.log('[SpicyLyricTranslater] Extracted lyrics:', lineTexts.slice(0, 3), '...');
+        debug('Extracted lyrics:', lineTexts.slice(0, 3), '...');
         
-        // Filter out empty lines for translation
         const nonEmptyTexts = lineTexts.filter(t => t.trim().length > 0);
         if (nonEmptyTexts.length === 0) {
-            console.log('[SpicyLyricTranslater] No non-empty lyrics found');
+            debug('No non-empty lyrics found');
             state.isTranslating = false;
             restoreButtonState();
             return;
         }
         
-        // Translate all lines
-        console.log('[SpicyLyricTranslater] Translating', nonEmptyTexts.length, 'lines...');
-        const translations = await translateLyrics(lineTexts, state.targetLanguage);
-        console.log('[SpicyLyricTranslater] Translation complete, got', translations.length, 'results');
+        const currentTrackUri = getCurrentTrackUri();
         
-        // Check if any actual translation was performed
+        const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri || undefined);
+        
+        if (skipCheck.detectedLanguage) {
+            state.detectedLanguage = skipCheck.detectedLanguage;
+        }
+        
+        if (skipCheck.skip) {
+            debug(`Skipping translation: ${skipCheck.reason}`);
+            state.isTranslating = false;
+            restoreButtonState();
+            
+            if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
+                Spicetify.showNotification(skipCheck.reason || 'Lyrics already in target language');
+            }
+            return;
+        }
+        
+        debug('Translating', nonEmptyTexts.length, 'lines for track:', currentTrackUri);
+        
+        const translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri || undefined, state.detectedLanguage || undefined);
+        debug('Translation complete, got', translations.length, 'results');
+        
         const wasActuallyTranslated = translations.some(t => t.wasTranslated === true);
         
-        // Store translations
         state.translatedLyrics.clear();
         translations.forEach((result, index) => {
             state.translatedLyrics.set(lineTexts[index], result.translatedText);
         });
         
-        // Apply translations to the lines we found
         applyTranslations(lines);
         
-        // Show notification if enabled and actual translation occurred
         if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
             if (wasActuallyTranslated) {
                 Spicetify.showNotification('Lyrics translated successfully!');
             } else {
-                // Lyrics are already in the target language
                 Spicetify.showNotification('Lyrics are already in the target language');
             }
         }
-    } catch (error) {
-        console.error('[SpicyLyricTranslater] Translation failed:', error);
+    } catch (err) {
+        error('Translation failed:', err);
         if (state.showNotifications && typeof Spicetify !== 'undefined' && Spicetify.showNotification) {
             Spicetify.showNotification('Translation failed. Please try again.', true);
         }
         
-        // Set button to error state for visual feedback
         setButtonErrorState(true);
         
-        // Clear error state after 3 seconds
         setTimeout(() => setButtonErrorState(false), 3000);
     } finally {
         state.isTranslating = false;
         
-        // Restore button state in both main and PIP
         restoreButtonState();
     }
 }
 
-/**
- * Apply translations to the lyrics DOM
- * Hides original content and shows only translated text
- */
 function applyTranslations(lines: NodeListOf<Element>): void {
+    if (state.overlayMode === 'interleaved' || state.overlayMode === 'side-by-side') {
+        const translationMapByIndex = new Map<number, string>();
+        lines.forEach((line, index) => {
+            const originalText = extractLineText(line);
+            const translatedText = state.translatedLyrics.get(originalText);
+            if (translatedText && translatedText !== originalText) {
+                translationMapByIndex.set(index, translatedText);
+            }
+        });
+        
+        if (!isOverlayActive()) {
+            enableOverlay({ mode: state.overlayMode });
+        }
+        updateOverlayContent(translationMapByIndex);
+        correctLyricsScroll();
+        return;
+    }
+    
     lines.forEach((line, index) => {
         const originalText = extractLineText(line);
         const translatedText = state.translatedLyrics.get(originalText);
         
         if (translatedText && translatedText !== originalText) {
-            // Remove existing translation elements first
             const existingTranslation = line.querySelector('.spicy-translation-container');
             if (existingTranslation) {
                 existingTranslation.remove();
             }
             
-            // Restore any previously hidden content first
             restoreLineText(line);
             
-            // Store original text as data attribute for restoration
             (line as HTMLElement).dataset.originalText = originalText;
             (line as HTMLElement).dataset.lineIndex = index.toString();
             
-            // Mark line as translated
             line.classList.add('spicy-translated');
             
-            // Hide original content completely, show only translation
-            // Get all direct content elements (words, syllables, letterGroups, word-groups)
-            // IMPORTANT: Do NOT hide individual .letter elements - they are animated by Spicy Lyrics
-            // We hide the parent .letterGroup instead which contains the letters
             const letterGroups = line.querySelectorAll('.letterGroup');
             const otherElements = line.querySelectorAll('.word:not(.letterGroup .word), .syllable:not(.letterGroup .syllable), .word-group:not(.letterGroup .word-group)');
             
             if (letterGroups.length > 0 || otherElements.length > 0) {
-                // Hide letterGroup containers (preserves internal structure for when we restore)
                 letterGroups.forEach((el) => {
                     (el as HTMLElement).classList.add('spicy-hidden-original');
                 });
-                // Hide other standalone elements that aren't inside letterGroups
                 otherElements.forEach((el) => {
                     (el as HTMLElement).classList.add('spicy-hidden-original');
                 });
             } else {
-                // For line-synced lyrics without word elements, wrap content
                 const existingWrapper = line.querySelector('.spicy-original-wrapper');
                 if (!existingWrapper) {
-                    // Save original innerHTML and create wrapper
                     const originalContent = line.innerHTML;
                     const wrapper = document.createElement('span');
                     wrapper.className = 'spicy-original-wrapper spicy-hidden-original';
@@ -731,7 +655,6 @@ function applyTranslations(lines: NodeListOf<Element>): void {
                 }
             }
             
-            // Add translation as the visible content
             const translationSpan = document.createElement('span');
             translationSpan.className = 'spicy-translation-container spicy-translation-text';
             translationSpan.textContent = translatedText;
@@ -739,27 +662,18 @@ function applyTranslations(lines: NodeListOf<Element>): void {
         }
     });
     
-    // Trigger scroll correction to keep the active lyric line centered
-    // This prevents the view from "jumping" when translations change line heights
     correctLyricsScroll();
 }
 
-/**
- * Correct scroll position after translations are applied
- * Ensures the active/current lyric line remains visible and centered
- */
 function correctLyricsScroll(): void {
     requestAnimationFrame(() => {
-        // Find the active/current lyric line
         const activeLine = document.querySelector('.LyricsContent .line.active, .LyricsContent .line.current') ||
                            document.querySelector('.LyricsContainer .line.active, .LyricsContainer .line.current');
         
         if (activeLine) {
-            // Scroll the active line into view smoothly
             activeLine.scrollIntoView({ behavior: 'auto', block: 'center' });
         }
         
-        // Also handle PIP window
         const pipWindow = getPIPWindow();
         if (pipWindow) {
             const pipActiveLine = pipWindow.document.querySelector('.LyricsContent .line.active, .LyricsContent .line.current') ||
@@ -771,7 +685,6 @@ function correctLyricsScroll(): void {
     });
 }
 
-// Remove rendered translations from given lines without clearing the cache
 function clearRenderedTranslations(lines: NodeListOf<Element>): void {
     lines.forEach(line => {
         restoreLineText(line);
@@ -779,32 +692,24 @@ function clearRenderedTranslations(lines: NodeListOf<Element>): void {
     });
 }
 
-/**
- * Restore original text/visibility to a line's elements
- */
 function restoreLineText(line: Element): void {
-    // Restore visibility of hidden word/syllable elements
     const hiddenElements = line.querySelectorAll('.spicy-hidden-original');
     hiddenElements.forEach(el => {
         el.classList.remove('spicy-hidden-original');
     });
     
-    // Remove translation text elements
     const translationTexts = line.querySelectorAll('.spicy-translation-container');
     translationTexts.forEach(el => el.remove());
     
-    // Restore wrapped content for line-synced lyrics (spicy-original-wrapper)
     const wrapper = line.querySelector('.spicy-original-wrapper');
     if (wrapper) {
         const originalContent = wrapper.innerHTML;
         wrapper.remove();
-        // Only restore if line is now empty
         if (line.innerHTML.trim() === '' || !line.querySelector('.word, .syllable, .letterGroup, .letter')) {
             line.innerHTML = originalContent;
         }
     }
     
-    // Legacy: restore word elements with data-original-word
     const wordElements = line.querySelectorAll('.word[data-original-word]');
     wordElements.forEach(wordEl => {
         const el = wordEl as HTMLElement;
@@ -815,11 +720,11 @@ function restoreLineText(line: Element): void {
     });
 }
 
-/**
- * Remove translations from lyrics and restore original content
- */
 function removeTranslations(): void {
-    // Get all documents to clean (main document + PIP if available)
+    if (isOverlayActive()) {
+        disableOverlay();
+    }
+    
     const documents: Document[] = [document];
     const pipWindow = getPIPWindow();
     if (pipWindow) {
@@ -827,17 +732,16 @@ function removeTranslations(): void {
     }
     
     documents.forEach(doc => {
-        // Remove translation containers first
         const translations = doc.querySelectorAll('.spicy-translation-container');
         translations.forEach(el => el.remove());
         
-        // Restore visibility of hidden elements
+        doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
+        
         const hiddenElements = doc.querySelectorAll('.spicy-hidden-original');
         hiddenElements.forEach(el => {
             el.classList.remove('spicy-hidden-original');
         });
         
-        // Restore wrapped content for line-synced lyrics (spicy-original-wrapper)
         const wrappers = doc.querySelectorAll('.spicy-original-wrapper');
         wrappers.forEach(wrapper => {
             const parent = wrapper.parentElement;
@@ -850,13 +754,11 @@ function removeTranslations(): void {
             }
         });
         
-        // Remove translated class
-        const translatedLines = doc.querySelectorAll('.spicy-translated');
+        const translatedLines = doc.querySelectorAll('.spicy-translated, .slt-overlay-parent, .slt-side-by-side-container');
         translatedLines.forEach(line => {
-            line.classList.remove('spicy-translated');
+            line.classList.remove('spicy-translated', 'slt-overlay-parent', 'slt-side-by-side-container');
         });
         
-        // Legacy: restore word elements with data-original-word
         const wordElements = doc.querySelectorAll('.word[data-original-word]');
         wordElements.forEach(wordEl => {
             const el = wordEl as HTMLElement;
@@ -870,9 +772,6 @@ function removeTranslations(): void {
     state.translatedLyrics.clear();
 }
 
-/**
- * Show settings modal
- */
 function showSettingsModal(): void {
     if (typeof Spicetify === 'undefined' || !Spicetify.PopupModal) {
         alert('Settings not available - Spicetify PopupModal not found');
@@ -889,6 +788,12 @@ function showSettingsModal(): void {
         <option value="custom" ${state.preferredApi === 'custom' ? 'selected' : ''}>Custom API</option>
     `;
     
+    const overlayModeOptions = `
+        <option value="replace" ${state.overlayMode === 'replace' ? 'selected' : ''}>Replace (default)</option>
+        <option value="interleaved" ${state.overlayMode === 'interleaved' ? 'selected' : ''}>Below each line</option>
+        <option value="side-by-side" ${state.overlayMode === 'side-by-side' ? 'selected' : ''}>Side by side</option>
+    `;
+
     const content = document.createElement('div');
     content.className = 'spicy-translate-settings';
     content.innerHTML = `
@@ -899,6 +804,15 @@ function showSettingsModal(): void {
             </div>
             <select id="spicy-translate-lang-select">
                 ${languageOptions}
+            </select>
+        </div>
+        <div class="setting-item">
+            <div>
+                <div class="setting-label">Translation Display</div>
+                <div class="setting-description">How to show translated lyrics</div>
+            </div>
+            <select id="spicy-translate-overlay-mode">
+                ${overlayModeOptions}
             </select>
         </div>
         <div class="setting-item">
@@ -934,7 +848,7 @@ function showSettingsModal(): void {
         <div class="setting-item">
             <div>
                 <div class="setting-label">Translation Cache</div>
-                <div class="setting-description">${getCacheStats().entries} cached translations (${formatBytes(getCacheStats().sizeBytes)})</div>
+                <div class="setting-description">${getCacheStats().trackCount || 0} tracks cached (${formatBytes(getCacheStats().sizeBytes)})</div>
             </div>
             <div style="display: flex; gap: 8px;">
                 <button id="spicy-translate-view-cache">View Cache</button>
@@ -955,9 +869,9 @@ function showSettingsModal(): void {
         </div>
     `;
     
-    // Add event listeners
     setTimeout(() => {
         const langSelect = document.getElementById('spicy-translate-lang-select') as HTMLSelectElement;
+        const overlayModeSelect = document.getElementById('spicy-translate-overlay-mode') as HTMLSelectElement;
         const apiSelect = document.getElementById('spicy-translate-api-select') as HTMLSelectElement;
         const customApiContainer = document.getElementById('spicy-translate-custom-api-container');
         const customApiUrlInput = document.getElementById('spicy-translate-custom-api-url') as HTMLInputElement;
@@ -971,8 +885,23 @@ function showSettingsModal(): void {
                 state.targetLanguage = langSelect.value;
                 storage.set('target-language', state.targetLanguage);
                 
-                // Re-translate if enabled
                 if (state.isEnabled) {
+                    state.translatedLyrics.clear();
+                    removeTranslations();
+                    translateCurrentLyrics();
+                }
+            });
+        }
+        
+        if (overlayModeSelect) {
+            overlayModeSelect.addEventListener('change', () => {
+                state.overlayMode = overlayModeSelect.value as OverlayMode;
+                storage.set('overlay-mode', state.overlayMode);
+                setOverlayConfig({ mode: state.overlayMode });
+                
+                if (state.isEnabled) {
+                    state.translatedLyrics.clear();
+                    removeTranslations();
                     translateCurrentLyrics();
                 }
             });
@@ -984,7 +913,6 @@ function showSettingsModal(): void {
                 storage.set('preferred-api', state.preferredApi);
                 setPreferredApi(state.preferredApi, state.customApiUrl);
                 
-                // Show/hide custom API URL input
                 if (customApiContainer) {
                     customApiContainer.style.display = state.preferredApi === 'custom' ? 'flex' : 'none';
                 }
@@ -1028,7 +956,6 @@ function showSettingsModal(): void {
                 if (state.showNotifications && Spicetify.showNotification) {
                     Spicetify.showNotification('Translation cache cleared!');
                 }
-                // Close and reopen to refresh cache count
                 Spicetify.PopupModal.hide();
                 setTimeout(() => showSettingsModal(), 100);
             });
@@ -1069,9 +996,6 @@ function showSettingsModal(): void {
     });
 }
 
-/**
- * Show cache viewer modal with all cached translations
- */
 function showCacheViewerModal(): void {
     if (typeof Spicetify === 'undefined' || !Spicetify.PopupModal) {
         return;
@@ -1121,7 +1045,6 @@ function showCacheViewerModal(): void {
         `;
     }
     
-    // Add event listeners
     setTimeout(() => {
         const backBtn = document.getElementById('spicy-cache-back');
         const clearAllBtn = document.getElementById('spicy-cache-clear-all');
@@ -1152,13 +1075,11 @@ function showCacheViewerModal(): void {
                 const lang = button.dataset.lang || '';
                 
                 if (deleteCachedTranslation(original, lang)) {
-                    // Remove the item from the list
                     const cacheItem = button.closest('.cache-item');
                     if (cacheItem) {
                         cacheItem.remove();
                     }
                     
-                    // Update the count display
                     const newStats = getCacheStats();
                     const countDisplay = content.querySelector('div[style*="margin-bottom: 12px"]');
                     if (countDisplay) {
@@ -1177,95 +1098,97 @@ function showCacheViewerModal(): void {
     });
 }
 
-/**
- * Setup observer for ViewControls changes
- */
 function setupViewControlsObserver(): void {
     if (viewControlsObserver) {
         viewControlsObserver.disconnect();
+        viewControlsObserver = null;
     }
     
-    viewControlsObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'childList') {
-                // Check if our button was removed
-                const viewControls = getViewControls();
-                if (viewControls && !viewControls.querySelector('#TranslateToggle')) {
-                    insertTranslateButton();
+    const viewControls = getViewControls();
+    if (!viewControls) {
+        debug('ViewControls not found, skipping observer setup');
+        return;
+    }
+    
+    try {
+        viewControlsObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList') {
+                    const vc = getViewControls();
+                    if (vc && !vc.querySelector('#TranslateToggle')) {
+                        insertTranslateButton();
+                    }
                 }
             }
-        }
-    });
-    
-    const viewControls = getViewControls();
-    if (viewControls) {
+        });
+        
         viewControlsObserver.observe(viewControls, {
             childList: true,
             subtree: true
         });
+        debug('ViewControls observer attached');
+    } catch (e) {
+        warn('Failed to setup ViewControls observer:', e);
     }
 }
 
-/**
- * Setup observer for lyrics content changes
- */
 function setupLyricsObserver(): void {
     if (lyricsObserver) {
         lyricsObserver.disconnect();
+        lyricsObserver = null;
     }
     
-    lyricsObserver = new MutationObserver((mutations) => {
-        if (!state.isEnabled || state.isTranslating) return;
-        
-        // Check if new lyrics were loaded
-        const hasNewContent = mutations.some(m => 
-            m.type === 'childList' && 
-            m.addedNodes.length > 0 &&
-            Array.from(m.addedNodes).some(n => 
-                n.nodeType === Node.ELEMENT_NODE && 
-                (n as Element).classList?.contains('line')
-            )
-        );
-        
-        if (hasNewContent && state.autoTranslate && !state.isTranslating) {
-            // Debounce to avoid multiple rapid translations
-            if (translateDebounceTimer) {
-                clearTimeout(translateDebounceTimer);
-            }
-            translateDebounceTimer = setTimeout(() => {
-                translateDebounceTimer = null;
-                if (!state.isTranslating) {
-                    // Auto-enable translation if auto-translate is on
-                    if (!state.isEnabled) {
-                        state.isEnabled = true;
-                        storage.set('translation-enabled', 'true');
-                        updateButtonState();
-                    }
-                    translateCurrentLyrics();
-                }
-            }, 500);
-        }
-    });
-    
     const lyricsContent = getLyricsContent();
-    if (lyricsContent) {
+    if (!lyricsContent) {
+        debug('LyricsContent not found, skipping observer setup');
+        return;
+    }
+    
+    try {
+        lyricsObserver = new MutationObserver((mutations) => {
+            if (!state.isEnabled || state.isTranslating) return;
+            
+            const hasNewContent = mutations.some(m => 
+                m.type === 'childList' && 
+                m.addedNodes.length > 0 &&
+                Array.from(m.addedNodes).some(n => 
+                    n.nodeType === Node.ELEMENT_NODE && 
+                    (n as Element).classList?.contains('line')
+                )
+            );
+            
+            if (hasNewContent && state.autoTranslate && !state.isTranslating) {
+                if (translateDebounceTimer) {
+                    clearTimeout(translateDebounceTimer);
+                }
+                translateDebounceTimer = setTimeout(() => {
+                    translateDebounceTimer = null;
+                    if (!state.isTranslating) {
+                        if (!state.isEnabled) {
+                            state.isEnabled = true;
+                            storage.set('translation-enabled', 'true');
+                            updateButtonState();
+                        }
+                        translateCurrentLyrics();
+                    }
+                }, 500);
+            }
+        });
+        
         lyricsObserver.observe(lyricsContent, {
             childList: true,
             subtree: true
         });
+        debug('Lyrics observer attached');
+    } catch (e) {
+        warn('Failed to setup Lyrics observer:', e);
     }
 }
-
-/**
- * Handle Spicy Lyrics page open (including Cinema View and PIP)
- */
 async function onSpicyLyricsOpen(): Promise<void> {
-    console.log('[SpicyLyricTranslater] Lyrics view detected, initializing...');
+    info('Lyrics view detected, initializing...');
     
-    // Mark user as actively viewing lyrics
     setViewingLyrics(true);
     
-    // Wait for ViewControls to be available - try multiple selectors including PIP
     let viewControls = await waitForElement('#SpicyLyricsPage .ViewControls', 3000);
     if (!viewControls) {
         viewControls = await waitForElement('.spicy-pip-wrapper .ViewControls', 3000);
@@ -1277,7 +1200,6 @@ async function onSpicyLyricsOpen(): Promise<void> {
         viewControls = await waitForElement('.ViewControls', 3000);
     }
     
-    // Also check PIP window
     if (!viewControls) {
         const pipWindow = getPIPWindow();
         if (pipWindow) {
@@ -1286,73 +1208,55 @@ async function onSpicyLyricsOpen(): Promise<void> {
     }
     
     if (viewControls) {
-        console.log('[SpicyLyricTranslater] ViewControls found, inserting button');
-        // Insert our button
+        debug('ViewControls found, inserting button');
         insertTranslateButton();
-        // Inject styles into PIP window if needed
         injectStylesIntoPIP();
-        // Setup observers
         setupViewControlsObserver();
     } else {
-        console.log('[SpicyLyricTranslater] ViewControls not found, will retry...');
+        debug('ViewControls not found, will retry...');
     }
     
     setupLyricsObserver();
     
-    // Auto-translate if auto-translate setting is on
     if (state.autoTranslate) {
-        // Auto-enable translation
         if (!state.isEnabled) {
             state.isEnabled = true;
             storage.set('translation-enabled', 'true');
             updateButtonState();
         }
-        // Wait for lyrics to stabilize before translating
-        waitForLyricsAndTranslate(10, 800);
+        waitForLyricsAndTranslate(20, 600);
     }
 }
 
-/**
- * Inject styles into PIP (Picture-in-Picture) window
- */
 function injectStylesIntoPIP(): void {
     const pipWindow = getPIPWindow();
     if (!pipWindow) return;
     
-    // Check if styles already injected
     if (pipWindow.document.getElementById('spicy-lyric-translater-styles')) return;
     
-    // Get styles from main document
     const mainStyles = document.getElementById('spicy-lyric-translater-styles');
     if (mainStyles) {
         const pipStyles = pipWindow.document.createElement('style');
         pipStyles.id = 'spicy-lyric-translater-styles';
         pipStyles.textContent = mainStyles.textContent;
         pipWindow.document.head.appendChild(pipStyles);
-        console.log('[SpicyLyricTranslater] Injected styles into PIP window');
+        debug('Injected styles into PIP window');
     }
 }
 
-/**
- * Handle Spicy Lyrics page close
- */
 function onSpicyLyricsClose(): void {
-    // Mark user as no longer actively viewing lyrics
     setViewingLyrics(false);
     
-    // Cancel any pending debounce timer
     if (translateDebounceTimer) {
         clearTimeout(translateDebounceTimer);
         translateDebounceTimer = null;
     }
     
-    // Cancel any ongoing translation
     if (state.translationAbortController) {
         state.translationAbortController.abort();
         state.translationAbortController = null;
     }
     
-    // Reset translating state
     state.isTranslating = false;
     
     if (viewControlsObserver) {
@@ -1364,27 +1268,19 @@ function onSpicyLyricsClose(): void {
         lyricsObserver.disconnect();
         lyricsObserver = null;
     }
-    
-    // Connection indicator stays visible in top left bar
 }
 
-/**
- * Register settings in Spicetify's settings menu
- */
 async function registerSettingsMenu(): Promise<void> {
-    // Wait for React to be available
     while (!Spicetify.React || !Spicetify.ReactDOM) {
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     
     try {
-        // Try to dynamically import spcr-settings (used by Spicy Lyrics and other extensions)
         const { SettingsSection } = await import('spcr-settings') as any;
         
         if (SettingsSection) {
             const settings = new SettingsSection('Spicy Lyric Translater', 'spicy-lyric-translater-settings');
             
-            // Target Language dropdown
             const languageNames = SUPPORTED_LANGUAGES.map(l => l.name);
             const currentLangIndex = SUPPORTED_LANGUAGES.findIndex(
                 l => l.code === state.targetLanguage
@@ -1405,7 +1301,6 @@ async function registerSettingsMenu(): Promise<void> {
                 }
             );
             
-            // Auto-Translate toggle
             settings.addToggle(
                 'auto-translate',
                 'Auto-Translate on Song Change',
@@ -1416,7 +1311,6 @@ async function registerSettingsMenu(): Promise<void> {
                 }
             );
             
-            // Clear Cache button
             settings.addButton(
                 'clear-cache',
                 'Clear Translation Cache',
@@ -1428,34 +1322,27 @@ async function registerSettingsMenu(): Promise<void> {
             );
             
             settings.pushSettings();
-            console.log('[SpicyLyricTranslater] Settings registered in Spicetify settings menu');
+            debug('Settings registered in Spicetify settings menu');
         }
     } catch (e) {
-        console.log('[SpicyLyricTranslater] spcr-settings not available, using built-in settings modal');
+        debug('spcr-settings not available, using built-in settings modal');
     }
 }
 
-/**
- * Setup page observer to detect Spicy Lyrics open/close (including Cinema View and PIP)
- */
 function setupPageObserver(): void {
-    console.log('[SpicyLyricTranslater] Setting up page observer...');
+    debug('Setting up page observer...');
     
-    // Check if already open
     if (isSpicyLyricsOpen()) {
-        console.log('[SpicyLyricTranslater] Lyrics view already open');
+        debug('Lyrics view already open');
         onSpicyLyricsOpen();
     }
     
-    // Try to scope observer to a more specific container for better performance
     const mainView = document.querySelector('.Root__main-view') || document.body;
     const observerTarget = mainView;
     
-    // Setup observer for page changes
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             if (mutation.type === 'childList') {
-                // Check for Spicy Lyrics page, Cinema View, or PIP
                 const isLyricsNode = (node: Node): boolean => {
                     if (node.nodeType !== Node.ELEMENT_NODE) return false;
                     const el = node as Element;
@@ -1472,12 +1359,12 @@ function setupPageObserver(): void {
                 const removed = Array.from(mutation.removedNodes).some(isLyricsNode);
                 
                 if (added) {
-                    console.log('[SpicyLyricTranslater] Lyrics view opened');
+                    debug('Lyrics view opened');
                     onSpicyLyricsOpen();
                 }
                 
                 if (removed) {
-                    console.log('[SpicyLyricTranslater] Lyrics view closed');
+                    debug('Lyrics view closed');
                     onSpicyLyricsClose();
                 }
             }
@@ -1489,32 +1376,24 @@ function setupPageObserver(): void {
         subtree: true
     });
     
-    console.log(`[SpicyLyricTranslater] Observer attached to ${observerTarget === document.body ? 'document.body' : '.Root__main-view'}`);
+    debug(`Observer attached to ${observerTarget === document.body ? 'document.body' : '.Root__main-view'}`);
     
-    // Also setup listener for PIP window changes
     setupPIPObserver();
 }
 
-/**
- * Setup observer specifically for PIP (Picture-in-Picture) window
- */
 function setupPIPObserver(): void {
-    // @ts-ignore: documentPictureInPicture is not yet standard
     const docPiP = (globalThis as any).documentPictureInPicture;
     if (!docPiP) return;
     
-    // Listen for PIP window entering
     docPiP.addEventListener('enter', (event: any) => {
-        console.log('[SpicyLyricTranslater] PIP window opened');
+        debug('PIP window opened');
         const pipWindow = event.window;
         if (pipWindow) {
-            // Wait for content to be ready, then setup PIP-specific observers
             setTimeout(() => {
                 injectStylesIntoPIP();
                 insertTranslateButton();
                 setupPIPLyricsObserver(pipWindow);
                 
-                // If already translating, apply to PIP
                 if (state.isEnabled && state.translatedLyrics.size > 0) {
                     const lines = getLyricsLines();
                     if (lines.length > 0) {
@@ -1526,52 +1405,63 @@ function setupPIPObserver(): void {
     });
 }
 
-/**
- * Setup observer for lyrics changes in PIP window
- */
-function setupPIPLyricsObserver(pipWindow: Window): void {
-    const lyricsContent = pipWindow.document.querySelector('.LyricsContent');
-    if (!lyricsContent) {
-        // Retry after a delay
-        setTimeout(() => setupPIPLyricsObserver(pipWindow), 500);
+function setupPIPLyricsObserver(pipWindow: Window, retryCount: number = 0): void {
+    const MAX_RETRIES = 6;
+    
+    if (retryCount >= MAX_RETRIES) {
+        debug('Max retries reached for PIP lyrics observer setup');
         return;
     }
     
-    const pipObserver = new MutationObserver((mutations) => {
-        if (!state.isEnabled || state.isTranslating) return;
-        
-        const hasNewContent = mutations.some(m => 
-            m.type === 'childList' && 
-            m.addedNodes.length > 0 &&
-            Array.from(m.addedNodes).some(n => 
-                n.nodeType === Node.ELEMENT_NODE && 
-                (n as Element).classList?.contains('line')
-            )
-        );
-        
-        if (hasNewContent && !state.isTranslating) {
-            // Use the shared debounce timer
-            if (translateDebounceTimer) {
-                clearTimeout(translateDebounceTimer);
-            }
-            translateDebounceTimer = setTimeout(() => {
-                translateDebounceTimer = null;
-                if (!state.isTranslating && state.isEnabled) {
-                    translateCurrentLyrics();
-                }
-            }, 300);
-        }
-    });
+    let lyricsContent: Element | null = null;
+    try {
+        lyricsContent = pipWindow.document?.querySelector('.LyricsContent');
+    } catch (e) {
+        debug('PIP window no longer accessible');
+        return;
+    }
     
-    pipObserver.observe(lyricsContent, {
-        childList: true,
-        subtree: true
-    });
+    if (!lyricsContent) {
+        setTimeout(() => setupPIPLyricsObserver(pipWindow, retryCount + 1), 500);
+        return;
+    }
+    
+    try {
+        const pipObserver = new MutationObserver((mutations) => {
+            if (!state.isEnabled || state.isTranslating) return;
+            
+            const hasNewContent = mutations.some(m => 
+                m.type === 'childList' && 
+                m.addedNodes.length > 0 &&
+                Array.from(m.addedNodes).some(n => 
+                    n.nodeType === Node.ELEMENT_NODE && 
+                    (n as Element).classList?.contains('line')
+                )
+            );
+            
+            if (hasNewContent && !state.isTranslating) {
+                if (translateDebounceTimer) {
+                    clearTimeout(translateDebounceTimer);
+                }
+                translateDebounceTimer = setTimeout(() => {
+                    translateDebounceTimer = null;
+                    if (!state.isTranslating && state.isEnabled) {
+                        translateCurrentLyrics();
+                    }
+                }, 300);
+            }
+        });
+        
+        pipObserver.observe(lyricsContent, {
+            childList: true,
+            subtree: true
+        });
+        debug('PIP lyrics observer attached');
+    } catch (e) {
+        warn('Failed to setup PIP lyrics observer:', e);
+    }
 }
 
-/**
- * Get current view mode (normal, fullscreen, cinema, pip, sidebar)
- */
 function getCurrentViewMode(): string {
     const pipWindow = getPIPWindow();
     if (pipWindow && pipWindow.document.querySelector('#SpicyLyricsPage')) {
@@ -1585,35 +1475,27 @@ function getCurrentViewMode(): string {
     if (page.classList.contains('ForcedCompactMode')) return 'compact';
     if (document.fullscreenElement) return 'fullscreen';
     
-    // Check for cinema view
     const isInFullscreenContainer = !!document.querySelector('.Cinema--Container #SpicyLyricsPage');
     if (isInFullscreenContainer) return 'cinema';
     
     return 'normal';
 }
 
-/**
- * Setup view mode change detection
- */
 function setupViewModeObserver(): void {
-    // Clear any existing interval
     if (viewModeIntervalId) {
         clearInterval(viewModeIntervalId);
         viewModeIntervalId = null;
     }
     
-    // Check view mode periodically (reduced frequency for performance)
     viewModeIntervalId = setInterval(() => {
         const currentMode = getCurrentViewMode();
         
         if (state.lastViewMode !== null && state.lastViewMode !== currentMode && currentMode !== 'none') {
-            console.log(`[SpicyLyricTranslater] View mode changed: ${state.lastViewMode} -> ${currentMode}`);
+            debug(`View mode changed: ${state.lastViewMode} -> ${currentMode}`);
             
-            // Re-inject button and re-apply translations when mode changes
             setTimeout(() => {
                 insertTranslateButton();
                 
-                // If translation is enabled, re-apply after mode change
                 if (state.isEnabled && state.translatedLyrics.size > 0) {
                     const lines = getLyricsLines();
                     if (lines.length > 0) {
@@ -1626,16 +1508,11 @@ function setupViewModeObserver(): void {
         }
         
         state.lastViewMode = currentMode;
-    }, 3000); // Check every 3 seconds instead of 1 second
+    }, 3000);
 }
 
-/**
- * Setup keyboard shortcut for quick toggle
- * Alt+T = Toggle translation on/off (Ctrl+Shift+T conflicts with DevTools)
- */
 function setupKeyboardShortcut(): void {
     document.addEventListener('keydown', (e: KeyboardEvent) => {
-        // Alt+T to toggle translation (avoids Ctrl+Shift+T DevTools conflict)
         if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 't') {
             e.preventDefault();
             e.stopPropagation();
@@ -1646,18 +1523,13 @@ function setupKeyboardShortcut(): void {
     });
 }
 
-/**
- * Initialize the extension
- */
 async function initialize(): Promise<void> {
-    // Wait for Spicetify to be ready
     while (typeof Spicetify === 'undefined' || !Spicetify.Platform) {
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    console.log('[SpicyLyricTranslater] Initializing...');
+    info('Initializing...');
     
-    // Load saved state
     state.isEnabled = storage.get('translation-enabled') === 'true';
     state.targetLanguage = storage.get('target-language') || 'en';
     state.autoTranslate = storage.get('auto-translate') === 'true';
@@ -1665,35 +1537,24 @@ async function initialize(): Promise<void> {
     state.preferredApi = (storage.get('preferred-api') as 'google' | 'libretranslate' | 'custom') || 'google';
     state.customApiUrl = storage.get('custom-api-url') || '';
     
-    // Set the preferred API in translator
     setPreferredApi(state.preferredApi, state.customApiUrl);
     
-    // Inject styles
     injectStyles();
     
-    // Initialize connection indicator (always visible in top left)
-    // This tracks users who have the extension installed, not just active viewers
     initConnectionIndicator();
     
-    // Register settings menu
     registerSettingsMenu();
     
-    // Start auto-update checker (checks every 30 minutes)
     startUpdateChecker(30 * 60 * 1000);
     
-    // Setup keyboard shortcut (Ctrl+Shift+T to toggle translation)
     setupKeyboardShortcut();
     
-    // Setup page observer
     setupPageObserver();
     
-    // Setup view mode observer for detecting mode switches
     setupViewModeObserver();
     
-    // Listen for navigation changes
     if (Spicetify.Platform?.History?.listen) {
         Spicetify.Platform.History.listen(() => {
-            // Check if navigated to Spicy Lyrics
             setTimeout(() => {
                 if (isSpicyLyricsOpen() && !document.querySelector('#TranslateToggle')) {
                     onSpicyLyricsOpen();
@@ -1702,49 +1563,39 @@ async function initialize(): Promise<void> {
         });
     }
     
-    // Listen for song changes
     if (Spicetify.Player?.addEventListener) {
         Spicetify.Player.addEventListener('songchange', () => {
-            console.log('[SpicyLyricTranslater] Song changed');
+            debug('Song changed');
             
-            // Cancel any pending debounce timer
             if (translateDebounceTimer) {
                 clearTimeout(translateDebounceTimer);
                 translateDebounceTimer = null;
             }
             
-            // Cancel any ongoing translation
             if (state.translationAbortController) {
                 state.translationAbortController.abort();
                 state.translationAbortController = null;
             }
             
-            // Reset translating state
             state.isTranslating = false;
             
-            // Clear translations on song change
             state.translatedLyrics.clear();
             removeTranslations();
             
-            // Re-translate if auto-translate is on
             if (state.autoTranslate) {
-                // Auto-enable translation
                 if (!state.isEnabled) {
                     state.isEnabled = true;
                     storage.set('translation-enabled', 'true');
                     updateButtonState();
                 }
-                // Wait longer for new lyrics to load (old lyrics need to be replaced first)
-                // Use increased initial delay and more retries
-                waitForLyricsAndTranslate(15, 1000);
+                waitForLyricsAndTranslate(20, 800);
             }
         });
     }
     
-    console.log('[SpicyLyricTranslater] Initialized successfully!');
+    info('Initialized successfully!');
 }
 
-// Export for external access
 window.SpicyLyricTranslater = {
     enable: () => {
         state.isEnabled = true;
@@ -1776,14 +1627,12 @@ window.SpicyLyricTranslater = {
     checkForUpdates: () => checkForUpdates(true),
     getUpdateInfo: getUpdateInfo,
     version: VERSION,
-    // Connectivity features
     connectivity: {
         getState: getConnectionState,
         refresh: refreshConnection
     }
 };
 
-// Start initialization
-initialize().catch(console.error);
+initialize().catch(error);
 
 export default initialize;

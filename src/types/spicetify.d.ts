@@ -1,4 +1,17 @@
-// Spicetify type declarations for the extension
+declare module 'spcr-settings' {
+    export class SettingsSection {
+        constructor(name: string, settingsId: string);
+        addDropDown(id: string, label: string, options: string[], defaultIndex?: number, callback?: (value: string) => void): void;
+        addToggle(id: string, label: string, defaultValue?: boolean, callback?: (value: boolean) => void): void;
+        addInput(id: string, label: string, defaultValue?: string, callback?: (value: string) => void): void;
+        addButton(id: string, label: string, buttonText: string, callback?: () => void): void;
+        getFieldValue<T>(id: string): T;
+        setFieldValue(id: string, value: any): void;
+        rerender(): void;
+        pushSettings(): void;
+    }
+}
+
 declare const Spicetify: {
     React: typeof React;
     ReactDOM: typeof ReactDOM;

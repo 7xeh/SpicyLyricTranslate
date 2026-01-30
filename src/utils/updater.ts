@@ -1,22 +1,13 @@
-/**
- * Auto-updater for Spicy Lyric Translater
- * Uses loader pattern - extension is loaded from CDN, updates just require a reload
- * 
- * @author 7xeh
- */
-
 import { storage } from './storage';
+import { debug, warn, error as logError, info } from './debug';
 
-// Declare the build-time injected version constant
 declare const __VERSION__: string;
 
-// Check if we're running via the loader (CDN) or locally installed
 const isLoaderMode = (): boolean => {
     const metadata = (window as any)._spicy_lyric_translater_metadata;
     return metadata?.IsLoader === true;
 };
 
-// Get version from loader metadata if available, otherwise use build-time version
 const getLoadedVersion = (): string => {
     const metadata = (window as any)._spicy_lyric_translater_metadata;
     if (metadata?.LoadedVersion) {
@@ -25,14 +16,12 @@ const getLoadedVersion = (): string => {
     return typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
 };
 
-// Version info - automatically injected at build time from package.json
 const CURRENT_VERSION = getLoadedVersion();
 const GITHUB_REPO = '7xeh/SpicyLyricTranslate';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const EXTENSION_FILENAME = 'spicy-lyric-translater.js';
 
-// Self-hosted update API
 const UPDATE_API_URL = 'https://7xeh.dev/apps/spicylyrictranslate/api/version.php';
 
 interface VersionInfo {
@@ -72,13 +61,9 @@ const updateState: UpdateState = {
 
 let hasShownUpdateNotice = false;
 let lastCheckTime = 0;
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes minimum between checks
+const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
-/**
- * Parse a version string into components
- */
 function parseVersion(version: string): VersionInfo | null {
-    // Remove 'v' prefix if present
     const cleanVersion = version.replace(/^v/, '');
     const match = cleanVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
     
@@ -94,10 +79,6 @@ function parseVersion(version: string): VersionInfo | null {
     };
 }
 
-/**
- * Compare two versions
- * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
- */
 function compareVersions(v1: VersionInfo, v2: VersionInfo): number {
     if (v1.major !== v2.major) {
         return v1.major > v2.major ? 1 : -1;
@@ -111,9 +92,6 @@ function compareVersions(v1: VersionInfo, v2: VersionInfo): number {
     return 0;
 }
 
-/**
- * Get current extension version
- */
 export function getCurrentVersion(): VersionInfo {
     return parseVersion(CURRENT_VERSION) || {
         major: 1,
@@ -123,11 +101,7 @@ export function getCurrentVersion(): VersionInfo {
     };
 }
 
-/**
- * Fetch latest version from self-hosted API first, fallback to GitHub
- */
 export async function getLatestVersion(): Promise<{ version: VersionInfo; release: GitHubRelease; downloadUrl: string } | null> {
-    // Try self-hosted API first
     try {
         const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
         
@@ -136,7 +110,7 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
             const version = parseVersion(data.version);
             
             if (version) {
-                console.log('[SpicyLyricTranslater] Got version from self-hosted API:', data.version);
+                debug('Got version from self-hosted API:', data.version);
                 return {
                     version,
                     release: {
@@ -157,10 +131,9 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
             }
         }
     } catch (error) {
-        console.warn('[SpicyLyricTranslater] Self-hosted API unavailable, trying GitHub:', error);
+        warn('Self-hosted API unavailable, trying GitHub:', error);
     }
     
-    // Fallback to GitHub API
     try {
         const response = await fetch(GITHUB_API_URL, {
             headers: {
@@ -169,7 +142,7 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
         });
         
         if (!response.ok) {
-            console.warn('[SpicyLyricTranslater] Failed to fetch latest version:', response.status);
+            warn('Failed to fetch latest version:', response.status);
             return null;
         }
         
@@ -177,24 +150,20 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
         const version = parseVersion(release.tag_name);
         
         if (!version) {
-            console.warn('[SpicyLyricTranslater] Failed to parse version from tag:', release.tag_name);
+            warn('Failed to parse version from tag:', release.tag_name);
             return null;
         }
         
-        // Find download URL from assets
         const jsAsset = release.assets?.find(a => a.name.endsWith('.js'));
         const downloadUrl = jsAsset?.browser_download_url || '';
         
         return { version, release, downloadUrl };
     } catch (error) {
-        console.error('[SpicyLyricTranslater] Error fetching latest version:', error);
+        logError('Error fetching latest version:', error);
         return null;
     }
 }
 
-/**
- * Check if an update is available
- */
 export async function isUpdateAvailable(): Promise<boolean> {
     const latest = await getLatestVersion();
     if (!latest) return false;
@@ -203,15 +172,11 @@ export async function isUpdateAvailable(): Promise<boolean> {
     return compareVersions(latest.version, current) > 0;
 }
 
-/**
- * Get the download URL for the extension JS file from a release
- */
 function getExtensionDownloadUrl(release: GitHubRelease): string | null {
     if (!release.assets || release.assets.length === 0) {
         return null;
     }
     
-    // Look for the .js file in assets
     const jsAsset = release.assets.find(asset => 
         asset.name.endsWith('.js') && 
         (asset.name.includes('spicy-lyric-translater') || asset.name.includes('spicylyrictranslate'))
@@ -221,15 +186,10 @@ function getExtensionDownloadUrl(release: GitHubRelease): string | null {
         return jsAsset.browser_download_url;
     }
     
-    // Fallback: look for any .js file
     const anyJs = release.assets.find(asset => asset.name.endsWith('.js'));
     return anyJs ? anyJs.browser_download_url : null;
 }
 
-/**
- * Perform the automatic update - simply reload Spotify to load the new version
- * The loader will automatically fetch and load the latest version on reload
- */
 async function performUpdate(release: GitHubRelease, version: VersionInfo, modalContent: HTMLElement): Promise<void> {
     if (updateState.isUpdating) return;
     
@@ -259,7 +219,6 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
     };
     
     try {
-        // Save the pending update version for tracking
         storage.set('pending-update-version', version.text);
         storage.set('pending-update-timestamp', Date.now().toString());
         
@@ -281,21 +240,18 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
         
         await new Promise(r => setTimeout(r, 300));
         
-        // Clear metadata so the loader fetches fresh version
         if ((window as any)._spicy_lyric_translater_metadata) {
             (window as any)._spicy_lyric_translater_metadata = {};
         }
         
-        // Reload Spotify to load the new version
         window.location.reload();
         
     } catch (error) {
-        console.error('[SpicyLyricTranslater] Update failed:', error);
+        logError('Update failed:', error);
         
         updateState.status = 'Update failed';
         updateProgress();
         
-        // Show error with manual download option
         if (progressContainer && buttonsContainer) {
             (progressContainer as HTMLElement).innerHTML = `
                 <div class="update-error">
@@ -333,9 +289,6 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
     }
 }
 
-/**
- * Show update notification modal
- */
 function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo, release: GitHubRelease): void {
     const content = document.createElement('div');
     content.className = 'slt-update-modal';
@@ -537,7 +490,6 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
             isLarge: true
         });
         
-        // Add event listeners
         setTimeout(() => {
             const laterBtn = document.getElementById('slt-update-later');
             const updateBtn = document.getElementById('slt-update-now');
@@ -550,7 +502,6 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
             
             if (updateBtn) {
                 updateBtn.addEventListener('click', () => {
-                    // Start the automatic update process
                     performUpdate(release, latestVersion, content);
                 });
             }
@@ -558,9 +509,6 @@ function showUpdateModal(currentVersion: VersionInfo, latestVersion: VersionInfo
     }
 }
 
-/**
- * Show a snackbar notification about the update
- */
 function showUpdateSnackbar(latestVersion: VersionInfo, release: GitHubRelease): void {
     if (Spicetify.showNotification) {
         const message = `Spicy Lyric Translater v${latestVersion.text} is available! Click to update.`;
@@ -568,11 +516,7 @@ function showUpdateSnackbar(latestVersion: VersionInfo, release: GitHubRelease):
     }
 }
 
-/**
- * Format release notes for display
- */
 function formatReleaseNotes(body: string): string {
-    // Basic markdown-like formatting
     return body
         .replace(/^### (.*)/gm, '<strong>$1</strong>')
         .replace(/^## (.*)/gm, '<strong style="font-size: 14px;">$1</strong>')
@@ -583,18 +527,13 @@ function formatReleaseNotes(body: string): string {
         .replace(/\n/g, '<br>');
 }
 
-/**
- * Check for updates and show notification if available
- */
 export async function checkForUpdates(force: boolean = false): Promise<void> {
-    // Don't check too frequently
     const now = Date.now();
     if (!force && now - lastCheckTime < CHECK_INTERVAL_MS) {
         return;
     }
     lastCheckTime = now;
     
-    // Don't show again unless forced
     if (!force && hasShownUpdateNotice) {
         return;
     }
@@ -606,37 +545,29 @@ export async function checkForUpdates(force: boolean = false): Promise<void> {
         const current = getCurrentVersion();
         
         if (compareVersions(latest.version, current) > 0) {
-            console.log(`[SpicyLyricTranslater] Update available: ${current.text} → ${latest.version.text}`);
+            debug(`Update available: ${current.text} → ${latest.version.text}`);
             showUpdateModal(current, latest.version, latest.release);
             hasShownUpdateNotice = true;
         } else {
-            console.log('[SpicyLyricTranslater] Already on latest version:', current.text);
+            debug('Already on latest version:', current.text);
         }
     } catch (error) {
-        console.error('[SpicyLyricTranslater] Error checking for updates:', error);
+        logError('Error checking for updates:', error);
     }
 }
 
-/**
- * Start periodic update checks
- */
 export function startUpdateChecker(intervalMs: number = 30 * 60 * 1000): void {
-    // Check after a short delay on startup
     setTimeout(() => {
         checkForUpdates();
     }, 5000);
     
-    // Then check periodically
     setInterval(() => {
         checkForUpdates();
     }, intervalMs);
     
-    console.log('[SpicyLyricTranslater] Update checker started');
+    info('Update checker started');
 }
 
-/**
- * Get update info without showing notification
- */
 export async function getUpdateInfo(): Promise<{
     hasUpdate: boolean;
     currentVersion: string;
@@ -667,6 +598,5 @@ export async function getUpdateInfo(): Promise<{
     }
 }
 
-// Export version and repo info
 export const VERSION = CURRENT_VERSION;
 export const REPO_URL = RELEASES_URL;

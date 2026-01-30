@@ -11,6 +11,7 @@ Real-time lyric translation extension for **[Spicy Lyrics](https://github.com/Sp
 ## Features
 
 * **Interlinear Translation:** Displays translations directly below each original lyric line for a natural reading flow.
+* **Replace Translation:** Displays translations directly how each original lyric line for a natural reading flow.
 * **Flow Mode:** A streamlined UI mode designed to minimize background clutter and focus on the text.
 * **TTML-Style Visuals:** Animated glow transitions and bloom effects that match the native Spicy Lyrics aesthetic.
 * **Smart Caching:** Track-based caching system (up to 100 tracks) to ensure instant loading for repeated listens.

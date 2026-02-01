@@ -19,29 +19,6 @@ Real-time lyric translation extension for **[Spicy Lyrics](https://github.com/Sp
 
 ---
 
-## Changelog (v1.5.3 - v1.7.6)
-
-* **v1.7.3 - v1.7.6:** * Improved "Below Each Line" layout for perfect DOM positioning.
-    * Added music break indicators (`• • •`) for instrumental segments.
-    * Reduced CPU usage by increasing polling intervals and throttling active line updates.
-    * Fixed click-to-jump functionality so translations no longer block lyric navigation.
-* **v1.7.0 - v1.7.2:**
-    * Moved translation overlay inside the `LyricsContainer` for better scroll synchronization.
-    * Improved responsive font sizing across PIP, Cinema, and Sidebar modes.
-* **v1.6.7 - v1.6.9:**
-    * Integrated SLT settings into the bottom of the native Spotify settings menu.
-    * Fixed cache statistics reporting and improved local storage enumeration.
-* **v1.6.4 - v1.6.8:**
-    * Added TTML-style glow effects and cubic-bezier transitions for smooth easing.
-    * Implemented subtle blur on inactive translation lines to improve visual hierarchy.
-* **v1.6.0 - v1.6.3:**
-    * Major stability refactor.
-    * Introduced a track-based caching system using track URIs.
-    * Added automatic pre-flight language detection to skip redundant translations.
-    * Fixed interleaved translation blurring issues by moving them to a floating overlay.
-
----
-
 ## Preview
 
 ![Preview](https://raw.githubusercontent.com/7xeh/SpicyLyricTranslate/main/preview.png)

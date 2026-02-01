@@ -18,8 +18,6 @@ interface CacheIndex {
     trackUris: string[];
 }
 
-// Always use native localStorage - Spicetify.LocalStorage has different method names
-// (get/set vs getItem/setItem) which causes crashes
 function getStorage(): typeof localStorage | null {
     if (typeof localStorage !== 'undefined') {
         return localStorage;
@@ -224,7 +222,6 @@ export function getTrackCacheStats(): {
     let oldestTimestamp: number | null = null;
     let sizeBytes = 0;
     
-    // Use native localStorage for iteration since Spicetify.LocalStorage doesn't support key()/length
     const nativeStorage = typeof localStorage !== 'undefined' ? localStorage : null;
     
     if (nativeStorage) {
@@ -252,7 +249,7 @@ export function getTrackCacheStats(): {
                         }
                     }
                 } catch (e) {
-                    // Skip invalid entries
+
                 }
             });
             
@@ -264,7 +261,6 @@ export function getTrackCacheStats(): {
         }
     }
     
-    // Fallback: use index
     const index = getCacheIndex();
     index.trackUris.forEach(fullKey => {
         const lastColonIdx = fullKey.lastIndexOf(':');
@@ -285,7 +281,7 @@ export function getTrackCacheStats(): {
                 }
             }
         } catch (e) {
-            // Skip invalid entries
+
         }
     });
     
@@ -317,7 +313,6 @@ export function getAllCachedTracks(): Array<{
         api?: string;
     }> = [];
     
-    // Use native localStorage for iteration since Spicetify.LocalStorage doesn't support key()/length
     const nativeStorage = typeof localStorage !== 'undefined' ? localStorage : null;
     
     if (nativeStorage) {
@@ -344,7 +339,7 @@ export function getAllCachedTracks(): Array<{
                             });
                         }
                     } catch (e) {
-                        // Skip invalid entries
+
                     }
                 }
             }
@@ -357,7 +352,6 @@ export function getAllCachedTracks(): Array<{
         }
     }
     
-    // Fallback: use index
     const index = getCacheIndex();
     index.trackUris.forEach(fullKey => {
         const lastColonIdx = fullKey.lastIndexOf(':');
@@ -379,7 +373,7 @@ export function getAllCachedTracks(): Array<{
                 });
             }
         } catch (e) {
-            // Skip invalid entries
+
         }
     });
     

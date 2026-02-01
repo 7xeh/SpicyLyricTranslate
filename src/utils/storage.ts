@@ -45,7 +45,6 @@ export const storage = {
         try {
             if (!isLocalStorageAvailable()) return false;
             
-            // Check storage size before writing large values
             if (value.length > 10000) {
                 const currentSize = getStorageSize();
                 if (currentSize + value.length * 2 > MAX_STORAGE_SIZE_BYTES) {

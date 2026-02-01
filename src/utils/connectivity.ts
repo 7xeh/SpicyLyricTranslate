@@ -1,29 +1,24 @@
 /**
  * Connection Indicator Component for Spicy Lyric Translater
  * Shows connectivity status, latency, and active user count
- * 
- * @author 7xeh
+ * * @author 7xeh
  */
 
 import { storage } from './storage';
 
-// API Configuration
 const API_BASE = 'https://7xeh.dev/apps/spicylyrictranslate/api/connectivity.php';
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-const LATENCY_CHECK_INTERVAL = 10000; // 10 seconds
-const CONNECTION_TIMEOUT = 5000; // 5 seconds
+const HEARTBEAT_INTERVAL = 30000;
+const LATENCY_CHECK_INTERVAL = 10000;
+const CONNECTION_TIMEOUT = 5000;
 
-// Latency thresholds (ms)
 const LATENCY_THRESHOLDS = {
     GREAT: 150,
     OK: 300,
     BAD: 500,
 } as const;
 
-// Connection states
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting';
 
-// Component state
 interface ConnectionIndicatorState {
     state: ConnectionState;
     sessionId: string | null;
@@ -48,17 +43,11 @@ const indicatorState: ConnectionIndicatorState = {
     isInitialized: false
 };
 
-// Timers
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let latencyInterval: ReturnType<typeof setInterval> | null = null;
-let jitterInterval: ReturnType<typeof setInterval> | null = null;
 
-// DOM elements
 let containerElement: HTMLElement | null = null;
 
-/**
- * Get latency class based on ms value
- */
 function getLatencyClass(latencyMs: number): string {
     if (latencyMs <= LATENCY_THRESHOLDS.GREAT) return 'slt-ci-great';
     if (latencyMs <= LATENCY_THRESHOLDS.OK) return 'slt-ci-ok';
@@ -66,19 +55,6 @@ function getLatencyClass(latencyMs: number): string {
     return 'slt-ci-horrible';
 }
 
-/**
- * Get spinner SVG
- */
-function getSpinnerIcon(size: number = 14): string {
-    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="slt-ci-spinner">
-        <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-    </svg>`;
-}
-
-/**
- * Create the connection indicator DOM element
- * Minimalist button that expands on hover
- */
 function createIndicatorElement(): HTMLElement {
     const container = document.createElement('div');
     container.className = 'SLT_ConnectionIndicator';
@@ -109,9 +85,6 @@ function createIndicatorElement(): HTMLElement {
     return container;
 }
 
-/**
- * Update the indicator UI based on current state
- */
 function updateUI(): void {
     if (!containerElement) return;
     
@@ -123,7 +96,6 @@ function updateUI(): void {
     
     if (!button || !dot) return;
 
-    // Remove all state classes
     dot.classList.remove('slt-ci-connecting', 'slt-ci-connected', 'slt-ci-error', 'slt-ci-great', 'slt-ci-ok', 'slt-ci-bad', 'slt-ci-horrible');
 
     switch (indicatorState.state) {
@@ -158,7 +130,6 @@ function updateUI(): void {
             break;
     }
 
-    // Add Tippy tooltip
     if (typeof Spicetify !== 'undefined' && Spicetify.Tippy && button && !(button as any)._tippy) {
         Spicetify.Tippy(button, {
             ...Spicetify.TippyProps,
@@ -174,9 +145,6 @@ function updateUI(): void {
     }
 }
 
-/**
- * Get tooltip content based on current state
- */
 function getTooltipContent(): string {
     switch (indicatorState.state) {
         case 'connected':
@@ -208,18 +176,12 @@ function getTooltipContent(): string {
     }
 }
 
-/**
- * Fetch with timeout
- */
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout: number = CONNECTION_TIMEOUT): Promise<Response> {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     
     try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
+        const response = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(id);
         return response;
     } catch (error) {
@@ -228,29 +190,21 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout:
     }
 }
 
-/**
- * Measure latency by pinging the server
- */
 async function measureLatency(): Promise<number | null> {
     try {
         const startTime = performance.now();
         const response = await fetchWithTimeout(`${API_BASE}?action=ping&_=${Date.now()}`);
-        
         if (!response.ok) return null;
-        
         await response.json();
-        const latency = Math.round(performance.now() - startTime);
-        return latency;
+        return Math.round(performance.now() - startTime);
     } catch (error) {
-        console.warn('[SpicyLyricTranslater] Latency check failed:', error);
         return null;
     }
 }
 
-/**
- * Send heartbeat to server
- */
 async function sendHeartbeat(): Promise<boolean> {
+    if (storage.get('share-usage-data') === 'false') return false;
+
     try {
         const params = new URLSearchParams({
             action: 'heartbeat',
@@ -260,13 +214,9 @@ async function sendHeartbeat(): Promise<boolean> {
         });
 
         const response = await fetchWithTimeout(`${API_BASE}?${params}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
-        
         if (data.success) {
             indicatorState.sessionId = data.sessionId || indicatorState.sessionId;
             indicatorState.totalUsers = data.totalUsers || 0;
@@ -278,21 +228,17 @@ async function sendHeartbeat(): Promise<boolean> {
                 indicatorState.state = 'connected';
                 updateUI();
             }
-            
             return true;
         }
-        
         return false;
     } catch (error) {
-        console.warn('[SpicyLyricTranslater] Heartbeat failed:', error);
         return false;
     }
 }
 
-/**
- * Connect to the connectivity service
- */
 async function connect(): Promise<boolean> {
+    if (storage.get('share-usage-data') === 'false') return false;
+
     indicatorState.state = 'connecting';
     updateUI();
 
@@ -303,10 +249,7 @@ async function connect(): Promise<boolean> {
         });
 
         const response = await fetchWithTimeout(`${API_BASE}?${params}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
         
@@ -318,24 +261,20 @@ async function connect(): Promise<boolean> {
             indicatorState.state = 'connected';
             indicatorState.lastHeartbeat = Date.now();
             
-            // Start latency measurement
             const latency = await measureLatency();
             indicatorState.latencyMs = latency;
             
             updateUI();
-            console.log('[SpicyLyricTranslater] Connected to connectivity service');
             return true;
         }
-        
         throw new Error('Connection failed');
     } catch (error) {
         console.warn('[SpicyLyricTranslater] Connection failed:', error);
         indicatorState.state = 'error';
         updateUI();
         
-        // Retry after delay
         setTimeout(() => {
-            if (indicatorState.state === 'error') {
+            if (indicatorState.state === 'error' && storage.get('share-usage-data') !== 'false') {
                 indicatorState.state = 'reconnecting';
                 updateUI();
                 connect();
@@ -346,11 +285,7 @@ async function connect(): Promise<boolean> {
     }
 }
 
-/**
- * Disconnect from the connectivity service
- */
 async function disconnect(): Promise<void> {
-    // Stop intervals
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
@@ -359,12 +294,7 @@ async function disconnect(): Promise<void> {
         clearInterval(latencyInterval);
         latencyInterval = null;
     }
-    if (jitterInterval) {
-        clearInterval(jitterInterval);
-        jitterInterval = null;
-    }
 
-    // Notify server
     if (indicatorState.sessionId) {
         try {
             const params = new URLSearchParams({
@@ -372,9 +302,7 @@ async function disconnect(): Promise<void> {
                 session: indicatorState.sessionId
             });
             await fetch(`${API_BASE}?${params}`);
-        } catch (e) {
-            // Ignore disconnect errors
-        }
+        } catch (e) {}
     }
 
     indicatorState.state = 'disconnected';
@@ -384,35 +312,7 @@ async function disconnect(): Promise<void> {
     updateUI();
 }
 
-/**
- * Apply small jitter to latency display for visual feedback
- */
-function applyJitter(): void {
-    if (indicatorState.latencyMs === null) return;
-    
-    // Add ±2ms jitter for visual feedback
-    const jitter = indicatorState.latencyMs + Math.floor(Math.random() * 5 - 2);
-    indicatorState.latencyMs = Math.max(1, jitter);
-    
-    // Only update the latency value, not the whole UI
-    if (containerElement) {
-        const pingEl = containerElement.querySelector('.slt-ci-ping');
-        const dot = containerElement.querySelector('.slt-ci-dot');
-        if (pingEl && indicatorState.latencyMs !== null) {
-            pingEl.textContent = `${indicatorState.latencyMs}ms`;
-        }
-        if (dot && indicatorState.latencyMs !== null) {
-            dot.classList.remove('slt-ci-great', 'slt-ci-ok', 'slt-ci-bad', 'slt-ci-horrible');
-            dot.classList.add(getLatencyClass(indicatorState.latencyMs));
-        }
-    }
-}
-
-/**
- * Start periodic latency checks and heartbeats
- */
 function startPeriodicChecks(): void {
-    // Heartbeat every 30 seconds
     heartbeatInterval = setInterval(async () => {
         const success = await sendHeartbeat();
         if (!success && indicatorState.state === 'connected') {
@@ -422,7 +322,6 @@ function startPeriodicChecks(): void {
         }
     }, HEARTBEAT_INTERVAL);
 
-    // Latency check every 10 seconds
     latencyInterval = setInterval(async () => {
         const latency = await measureLatency();
         if (latency !== null) {
@@ -430,44 +329,21 @@ function startPeriodicChecks(): void {
             updateUI();
         }
     }, LATENCY_CHECK_INTERVAL);
-
-    // Jitter removed - unnecessary visual updates causing performance overhead
-    // The actual latency is updated every 10 seconds which is sufficient
 }
 
-/**
- * Get the container where the indicator should be placed
- * Places indicator in the top left title bar, always visible
- */
 function getIndicatorContainer(): HTMLElement | null {
-    // Primary: Root top container (always visible in top left)
-    const rootTop = document.querySelector('.Root__top-container');
-    if (rootTop) {
-        console.log('[SpicyLyricTranslater] Found Root__top-container for connection indicator');
-        return rootTop as HTMLElement;
-    }
+    const topBarContentRight = document.querySelector('.main-topBar-topbarContentRight');
+    if (topBarContentRight) return topBarContentRight as HTMLElement;
 
-    // Alternative: Global nav bar
-    const globalNav = document.querySelector('[data-testid="global-nav"]');
-    if (globalNav) {
-        console.log('[SpicyLyricTranslater] Found global-nav for connection indicator');
-        return globalNav as HTMLElement;
-    }
+    const userWidget = document.querySelector('.main-userWidget-box');
+    if (userWidget && userWidget.parentNode) return userWidget.parentNode as HTMLElement;
+    
+    const historyButtons = document.querySelector('.main-topBar-historyButtons');
+    if (historyButtons && historyButtons.parentNode) return historyButtons.parentNode as HTMLElement;
 
-    // Fallback: Top bar area
-    const topBar = document.querySelector('.Root__top-bar') || document.querySelector('.main-topBar-container');
-    if (topBar) {
-        console.log('[SpicyLyricTranslater] Found top-bar for connection indicator');
-        return topBar as HTMLElement;
-    }
-
-    console.log('[SpicyLyricTranslater] No container found for connection indicator');
     return null;
 }
 
-/**
- * Wait for an element to appear in the DOM
- */
 function waitForElement(selector: string, timeout: number = 10000): Promise<Element | null> {
     return new Promise((resolve) => {
         const element = document.querySelector(selector);
@@ -475,7 +351,6 @@ function waitForElement(selector: string, timeout: number = 10000): Promise<Elem
             resolve(element);
             return;
         }
-
         const observer = new MutationObserver((mutations, obs) => {
             const el = document.querySelector(selector);
             if (el) {
@@ -483,13 +358,7 @@ function waitForElement(selector: string, timeout: number = 10000): Promise<Elem
                 resolve(el);
             }
         });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        // Timeout fallback
+        observer.observe(document.body, { childList: true, subtree: true });
         setTimeout(() => {
             observer.disconnect();
             resolve(document.querySelector(selector));
@@ -497,31 +366,27 @@ function waitForElement(selector: string, timeout: number = 10000): Promise<Elem
     });
 }
 
-/**
- * Append the indicator to the DOM
- */
 async function appendToDOM(): Promise<boolean> {
-    if (containerElement && containerElement.parentNode) {
-        return true; // Already appended
-    }
+    if (containerElement && containerElement.parentNode) return true;
 
-    // Wait for the topbar content right container (where notification bell lives)
-    const topBarContentRight = await waitForElement('.main-topBar-topbarContentRight');
-    if (topBarContentRight) {
+    const container = getIndicatorContainer();
+    
+    if (container) {
         containerElement = createIndicatorElement();
-        // Insert at the beginning of the container (before other buttons)
-        topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
-        console.log('[SpicyLyricTranslater] Connection indicator appended to topbar content right');
+        container.insertBefore(containerElement, container.firstChild);
         return true;
     }
 
-    console.log('[SpicyLyricTranslater] Could not find topbar content right container after waiting');
+    const topBarContentRight = await waitForElement('.main-topBar-topbarContentRight');
+    if (topBarContentRight) {
+        containerElement = createIndicatorElement();
+        topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
+        return true;
+    }
+    
     return false;
 }
 
-/**
- * Remove the indicator from the DOM
- */
 function removeFromDOM(): void {
     if (containerElement && containerElement.parentNode) {
         containerElement.parentNode.removeChild(containerElement);
@@ -529,44 +394,28 @@ function removeFromDOM(): void {
     containerElement = null;
 }
 
-/**
- * Initialize the connection indicator
- */
 export async function initConnectionIndicator(): Promise<void> {
-    if (indicatorState.isInitialized) return;
-    
-    console.log('[SpicyLyricTranslater] Initializing connection indicator...');
-    
-    // Create and append element (with retry/wait)
-    const appended = await appendToDOM();
-    if (!appended) {
-        console.log('[SpicyLyricTranslater] Could not find container for connection indicator');
+    if (storage.get('share-usage-data') === 'false') {
+        cleanupConnectionIndicator();
         return;
     }
 
-    indicatorState.isInitialized = true;
+    if (indicatorState.isInitialized) return;
+    
+    const appended = await appendToDOM();
+    if (!appended) return;
 
-    // Connect to service
+    indicatorState.isInitialized = true;
     const connected = await connect();
     
     if (connected) {
         startPeriodicChecks();
     }
 
-    // Handle page visibility changes
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            // Page is hidden, pause checks but keep connection
-            if (latencyInterval) {
-                clearInterval(latencyInterval);
-                latencyInterval = null;
-            }
-            if (jitterInterval) {
-                clearInterval(jitterInterval);
-                jitterInterval = null;
-            }
+            if (latencyInterval) { clearInterval(latencyInterval); latencyInterval = null; }
         } else {
-            // Page is visible again, resume checks
             if (indicatorState.state === 'connected') {
                 latencyInterval = setInterval(async () => {
                     const latency = await measureLatency();
@@ -576,9 +425,6 @@ export async function initConnectionIndicator(): Promise<void> {
                     }
                 }, LATENCY_CHECK_INTERVAL);
                 
-                jitterInterval = setInterval(applyJitter, 1000);
-                
-                // Immediate latency check
                 measureLatency().then(latency => {
                     if (latency !== null) {
                         indicatorState.latencyMs = latency;
@@ -589,32 +435,23 @@ export async function initConnectionIndicator(): Promise<void> {
         }
     });
 
-    // Handle window unload
     window.addEventListener('beforeunload', () => {
         disconnect();
     });
 }
 
-/**
- * Cleanup the connection indicator
- */
 export function cleanupConnectionIndicator(): void {
     disconnect();
     removeFromDOM();
     indicatorState.isInitialized = false;
 }
 
-/**
- * Get current connection state
- */
 export function getConnectionState(): ConnectionIndicatorState {
     return { ...indicatorState };
 }
 
-/**
- * Force refresh connection
- */
 export async function refreshConnection(): Promise<void> {
+    if (storage.get('share-usage-data') === 'false') return;
     await disconnect();
     await connect();
     if (indicatorState.state === 'connected') {
@@ -622,14 +459,9 @@ export async function refreshConnection(): Promise<void> {
     }
 }
 
-/**
- * Set whether user is actively viewing lyrics
- * This updates the active status on the server
- */
 export function setViewingLyrics(isViewing: boolean): void {
     if (indicatorState.isViewingLyrics !== isViewing) {
         indicatorState.isViewingLyrics = isViewing;
-        // Send immediate heartbeat to update active status
         if (indicatorState.state === 'connected') {
             sendHeartbeat().then(() => updateUI());
         }

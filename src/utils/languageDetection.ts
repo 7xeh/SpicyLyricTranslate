@@ -120,7 +120,6 @@ export function detectLanguageHeuristic(text: string): { code: string; confidenc
 
 
 async function detectLanguageViaAPI(text: string): Promise<{ code: string; confidence: number }> {
-    // Take a sample of text for detection
     const sample = text.slice(0, 500);
     const encodedText = encodeURIComponent(sample);
     

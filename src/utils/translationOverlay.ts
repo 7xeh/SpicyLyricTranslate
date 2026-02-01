@@ -16,7 +16,6 @@ let currentConfig: OverlayConfig = {
 
 let isOverlayEnabled = false;
 let translationMap: Map<number, string> = new Map();
-let activeLineObserver: MutationObserver | null = null;
 
 function getPIPWindow(): Window | null {
     try {
@@ -29,28 +28,92 @@ function getPIPWindow(): Window | null {
 }
 
 function getLyricLines(doc: Document): NodeListOf<Element> {
-    return doc.querySelectorAll('.SpicyLyricsScrollContainer .line, .LyricsContent .line, .LyricsContainer .line');
+    const isPipDoc = !!doc.querySelector('.spicy-pip-wrapper');
+    
+    if (isPipDoc) {
+        const pipLines = doc.querySelectorAll('.spicy-pip-wrapper #SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
+        if (pipLines.length > 0) return pipLines;
+        
+        const pipLinesAlt = doc.querySelectorAll('.spicy-pip-wrapper .SpicyLyricsScrollContainer .line:not(.musical-line)');
+        if (pipLinesAlt.length > 0) return pipLinesAlt;
+        
+        const pipLinesFallback = doc.querySelectorAll('.spicy-pip-wrapper .line:not(.musical-line)');
+        if (pipLinesFallback.length > 0) return pipLinesFallback;
+    }
+    
+    const scrollContainerLines = doc.querySelectorAll('#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
+    if (scrollContainerLines.length > 0) return scrollContainerLines;
+    
+    if (doc.body?.classList?.contains('SpicySidebarLyrics__Active')) {
+        const sidebarLines = doc.querySelectorAll('.Root__right-sidebar #SpicyLyricsPage .line:not(.musical-line)');
+        if (sidebarLines.length > 0) return sidebarLines;
+    }
+    
+    const compactLines = doc.querySelectorAll('#SpicyLyricsPage.ForcedCompactMode .line:not(.musical-line)');
+    if (compactLines.length > 0) return compactLines;
+
+    const lyricsContentLines = doc.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+    if (lyricsContentLines.length > 0) return lyricsContentLines;
+    
+    return doc.querySelectorAll('.SpicyLyricsScrollContainer .line:not(.musical-line), .LyricsContent .line:not(.musical-line), .LyricsContainer .line:not(.musical-line)');
 }
 
 function findLyricsContainer(doc: Document): Element | null {
-    return doc.querySelector('.SpicyLyricsScrollContainer') || 
+    const pipWrapper = doc.querySelector('.spicy-pip-wrapper');
+    if (pipWrapper) {
+        const pipScrollContainer = pipWrapper.querySelector('#SpicyLyricsPage .SpicyLyricsScrollContainer');
+        if (pipScrollContainer) return pipScrollContainer;
+        
+        const pipLyricsContent = pipWrapper.querySelector('#SpicyLyricsPage .LyricsContent');
+        if (pipLyricsContent) return pipLyricsContent;
+        
+        const pipPage = pipWrapper.querySelector('#SpicyLyricsPage');
+        if (pipPage) return pipPage;
+        
+        return pipWrapper;
+    }
+    
+    const scrollContainer = doc.querySelector('#SpicyLyricsPage .SpicyLyricsScrollContainer');
+    if (scrollContainer) return scrollContainer;
+    
+    if (doc.body?.classList?.contains('SpicySidebarLyrics__Active')) {
+        const sidebarContainer = doc.querySelector('.Root__right-sidebar #SpicyLyricsPage .SpicyLyricsScrollContainer') ||
+                                 doc.querySelector('.Root__right-sidebar #SpicyLyricsPage .LyricsContent');
+        if (sidebarContainer) return sidebarContainer;
+    }
+    
+    return doc.querySelector('#SpicyLyricsPage .LyricsContent') || 
            doc.querySelector('.LyricsContent') || 
            doc.querySelector('.LyricsContainer');
 }
 
 function extractLineText(line: Element): string {
-    const words = line.querySelectorAll('.word, .syllable, .letterGroup, .letter');
+    const words = line.querySelectorAll('.word:not(.dot), .syllable, .letterGroup');
     if (words.length > 0) {
-        return Array.from(words).map(w => w.textContent || '').join('');
+        return Array.from(words).map(w => w.textContent?.trim() || '').join(' ').replace(/\s+/g, ' ').trim();
     }
+    
+    const letters = line.querySelectorAll('.letter');
+    if (letters.length > 0) {
+        return Array.from(letters).map(l => l.textContent || '').join('').trim();
+    }
+    
     return line.textContent?.trim() || '';
 }
 
 function isLineActive(line: Element): boolean {
+
+    const classList = line.classList;
+    if (classList.contains('Active')) return true;
+    if (classList.contains('active')) return true;
+    if (classList.contains('current')) return true;
+    if (classList.contains('is-active')) return true;
+    
+    if (!classList.contains('Sung') && !classList.contains('NotSung') && !classList.contains('musical-line')) {
+        return true;
+    }
+    
     return line.classList.contains('Active') ||
-           line.classList.contains('active') ||
-           line.classList.contains('current') ||
-           line.classList.contains('is-active') ||
            line.classList.contains('playing') ||
            line.getAttribute('data-active') === 'true' ||
            (line as HTMLElement).dataset.active === 'true';
@@ -99,8 +162,6 @@ let interleavedResizeObserver: ResizeObserver | null = null;
 let interleavedAnimationFrame: number | null = null;
 
 function setupInterleavedTracking(doc: Document): void {
-    // No longer needed for positioning since we use inline siblings
-    // Active line tracking is handled by setupActiveLineObserver
     cleanupInterleavedTracking();
 }
 
@@ -139,7 +200,6 @@ function applyInterleavedMode(doc: Document): void {
             return;
         }
         
-        // Remove any existing interleaved translations
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
         
         lines.forEach((line, index) => {
@@ -147,16 +207,12 @@ function applyInterleavedMode(doc: Document): void {
                 const translation = translationMap.get(index);
                 const originalText = extractLineText(line);
                 
-                // Check if this is a music break (empty line or just symbols)
                 const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
                 
-                // Skip if no translation and not a break, or if translation matches original
                 if (!translation && !isBreak) return;
                 if (translation === originalText) return;
                 
-                // Ensure line has a parent before proceeding
                 if (!line.parentNode) {
-                    warn('Line element has no parent, skipping:', index);
                     return;
                 }
                 
@@ -176,7 +232,6 @@ function applyInterleavedMode(doc: Document): void {
                 
                 if (isLineActive(line)) translationEl.classList.add('active');
                 
-                // Insert translation directly after the line element
                 line.parentNode.insertBefore(translationEl, line.nextSibling);
             } catch (lineErr) {
                 warn('Failed to process line', index, ':', lineErr);
@@ -218,13 +273,11 @@ function renderTranslations(doc: Document): void {
     }
 }
 
-// Throttle state for active line changes
 let lastActiveLineUpdate = 0;
 const ACTIVE_LINE_THROTTLE_MS = 50;
 
 function isDocumentValid(doc: Document): boolean {
     try {
-        // Check if document is still accessible and not detached
         return doc && doc.body !== null && doc.defaultView !== null;
     } catch {
         return false;
@@ -234,23 +287,15 @@ function isDocumentValid(doc: Document): boolean {
 function onActiveLineChanged(doc: Document): void {
     if (!isOverlayEnabled) return;
     
-    // Check if document is still valid (prevents crashes with closed PIP windows)
     if (!isDocumentValid(doc)) {
-        // Clean up resources for this invalid document
         const observer = activeLineObservers.get(doc);
         if (observer) {
             try { observer.disconnect(); } catch {}
             activeLineObservers.delete(doc);
         }
-        const interval = activeLinePollIntervals.get(doc);
-        if (interval) {
-            clearInterval(interval);
-            activeLinePollIntervals.delete(doc);
-        }
         return;
     }
     
-    // Throttle updates to prevent excessive DOM manipulation
     const now = Date.now();
     if (now - lastActiveLineUpdate < ACTIVE_LINE_THROTTLE_MS) {
         return;
@@ -261,8 +306,7 @@ function onActiveLineChanged(doc: Document): void {
         if (currentConfig.mode === 'interleaved') {
             const lines = getLyricLines(doc);
             if (!lines || lines.length === 0) return;
-            
-            // Find translations that are siblings of lines
+        
             const translations = doc.querySelectorAll('.slt-interleaved-translation');
             translations.forEach((translationEl) => {
                 try {
@@ -272,57 +316,84 @@ function onActiveLineChanged(doc: Document): void {
                         if (line) {
                             const shouldBeActive = isLineActive(line);
                             const isActive = translationEl.classList.contains('active');
-                            // Only toggle if state changed to minimize reflows
                             if (shouldBeActive !== isActive) {
                                 translationEl.classList.toggle('active', shouldBeActive);
                             }
                         }
                     }
-                } catch (e) {
-                    // Silently ignore individual element errors
-                }
+                } catch (e) { }
             });
         }
-    } catch (err) {
-        // Silently ignore to prevent crash loops
+    } catch (err) { }
+}
+
+const activeLineObservers = new Map<Document, MutationObserver>();
+let activeSyncIntervalId: ReturnType<typeof setInterval> | null = null;
+
+function startActiveSyncInterval(): void {
+    if (activeSyncIntervalId) return;
+    
+    activeSyncIntervalId = setInterval(() => {
+        if (!isOverlayEnabled) return;
+        
+        try {
+            onActiveLineChanged(document);
+            
+            const pipWindow = getPIPWindow();
+            if (pipWindow) {
+                try {
+                    const pipDoc = pipWindow.document;
+                    if (pipDoc && pipDoc.body) {
+                        onActiveLineChanged(pipDoc);
+                        
+                        if (!activeLineObservers.has(pipDoc)) {
+                            setupActiveLineObserver(pipDoc);
+                        }
+                    }
+                } catch (pipErr) {
+                }
+            }
+        } catch (e) { }
+    }, 80);
+}
+
+function stopActiveSyncInterval(): void {
+    if (activeSyncIntervalId) {
+        clearInterval(activeSyncIntervalId);
+        activeSyncIntervalId = null;
     }
 }
 
-// Store intervals per document to prevent memory leaks
-const activeLinePollIntervals = new Map<Document, ReturnType<typeof setInterval>>();
-const activeLineObservers = new Map<Document, MutationObserver>();
-
 function setupActiveLineObserver(doc: Document): void {
     try {
-        // Validate document before setup
         if (!isDocumentValid(doc)) {
             debug('Document not valid for observer setup');
             return;
         }
         
-        // Clean up existing observer for this document
         const existingObserver = activeLineObservers.get(doc);
         if (existingObserver) {
             existingObserver.disconnect();
             activeLineObservers.delete(doc);
         }
         
-        // Clean up existing interval for this document
-        const existingInterval = activeLinePollIntervals.get(doc);
-        if (existingInterval) {
-            clearInterval(existingInterval);
-            activeLinePollIntervals.delete(doc);
+        let lyricsContainer = findLyricsContainer(doc);
+        
+        if (!lyricsContainer && doc.body.classList.contains('SpicySidebarLyrics__Active')) {
+            lyricsContainer = doc.querySelector('.Root__right-sidebar #SpicyLyricsPage');
         }
         
-        // Also clean up legacy single observer if present
-        if (activeLineObserver) {
-            activeLineObserver.disconnect();
-            activeLineObserver = null;
+        if (!lyricsContainer) {
+            lyricsContainer = doc.querySelector('.spicy-pip-wrapper #SpicyLyricsPage');
         }
         
-        const lyricsContainer = findLyricsContainer(doc);
+        if (!lyricsContainer) {
+            lyricsContainer = doc.querySelector('#SpicyLyricsPage');
+        }
+        
         if (!lyricsContainer) {
             debug('No lyrics container found for observer setup');
+            startActiveSyncInterval();
             return;
         }
         
@@ -338,7 +409,6 @@ function setupActiveLineObserver(doc: Document): void {
                             break;
                         }
                     }
-                    // Only trigger on childList if it's adding/removing line elements
                     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                         const hasLineChange = Array.from(mutation.addedNodes).some(node => 
                             node.nodeType === Node.ELEMENT_NODE && 
@@ -354,42 +424,25 @@ function setupActiveLineObserver(doc: Document): void {
                 if (activeChanged) {
                     onActiveLineChanged(doc);
                 }
-            } catch (e) {
-                // Silently ignore mutation callback errors
-            }
+            } catch (e) { }
         });
         
         observer.observe(lyricsContainer, {
             attributes: true,
-            attributeFilter: ['class', 'data-active'],
+            attributeFilter: ['class', 'data-active', 'style'],
             subtree: true,
             childList: true
         });
         
         activeLineObservers.set(doc, observer);
         
-        // Use a longer interval (250ms instead of 100ms) to reduce CPU usage
-        // The MutationObserver handles most active line changes, this is just a fallback
-        const intervalId = setInterval(() => {
-            // Early exit if document is no longer valid (e.g., PIP window closed)
-            if (!isDocumentValid(doc)) {
-                clearInterval(intervalId);
-                activeLinePollIntervals.delete(doc);
-                const obs = activeLineObservers.get(doc);
-                if (obs) {
-                    try { obs.disconnect(); } catch {}
-                    activeLineObservers.delete(doc);
-                }
-                return;
-            }
-            if (isOverlayEnabled && currentConfig.mode === 'interleaved') {
-                onActiveLineChanged(doc);
-            }
-        }, 250);
+        startActiveSyncInterval();
+
+        setTimeout(() => onActiveLineChanged(doc), 50);
         
-        activeLinePollIntervals.set(doc, intervalId);
     } catch (err) {
         warn('Failed to setup active line observer:', err);
+        startActiveSyncInterval();
     }
 }
 
@@ -425,23 +478,12 @@ export function disableOverlay(): void {
     isOverlayEnabled = false;
     
     cleanupInterleavedTracking();
+    stopActiveSyncInterval();
     
-    // Clean up all document-specific observers and intervals
     activeLineObservers.forEach((observer, doc) => {
         observer.disconnect();
     });
     activeLineObservers.clear();
-    
-    activeLinePollIntervals.forEach((interval, doc) => {
-        clearInterval(interval);
-    });
-    activeLinePollIntervals.clear();
-    
-    // Also clean up legacy single observer if present
-    if (activeLineObserver) {
-        activeLineObserver.disconnect();
-        activeLineObserver = null;
-    }
     
     const cleanup = (doc: Document) => {
         const overlay = doc.getElementById('spicy-translate-overlay');
@@ -580,7 +622,7 @@ body.slt-overlay-active .LyricsContent {}
     transition: color 0.3s ease, opacity 0.3s ease, text-shadow 0.4s cubic-bezier(0.25, 0.1, 0.25, 1), filter 0.3s ease;
     letter-spacing: 0.01em;
     text-shadow: none;
-    filter: blur(0.3px);
+    filter: blur(var(--slt-blur-amount, 1.5px));
 }
 
 .slt-interleaved-translation.slt-music-break {
@@ -592,7 +634,7 @@ body.slt-overlay-active .LyricsContent {}
 
 .slt-interleaved-translation:not(.active) {
     opacity: 0.6;
-    filter: blur(0.4px);
+    filter: blur(var(--slt-blur-amount, 1.5px));
     text-shadow: 0 0 0 transparent;
 }
 
@@ -600,7 +642,7 @@ body.slt-overlay-active .LyricsContent {}
     color: #fff;
     opacity: 1;
     font-weight: 600;
-    filter: none;
+    filter: blur(0px);
     text-shadow: 
         0 0 8px rgba(255, 255, 255, 0.6),
         0 0 16px rgba(255, 255, 255, 0.4),
@@ -650,6 +692,22 @@ body.slt-overlay-active .LyricsContent {}
     font-size: calc(0.78em * var(--slt-overlay-font-scale, 1));
     margin-top: 2px;
     margin-bottom: 4px;
+}
+
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .slt-interleaved-translation {
+    font-size: calc(0.65em * var(--slt-overlay-font-scale, 1));
+    margin-top: 1px;
+    margin-bottom: 3px;
+}
+
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .spicy-translation-text {
+    color: inherit;
+    font-family: inherit;
+}
+
+.spicy-pip-wrapper .spicy-translation-text {
+    color: inherit;
+    font-family: inherit;
 }
 `;
 }

@@ -40,8 +40,8 @@ const RATE_LIMIT = {
 
 let lastApiCallTime = 0;
 
-const BATCH_SEPARATOR = '\n\u200B\u2063\u200B\n';
-const BATCH_SEPARATOR_REGEX = /\n?[\u200B\u2063]+\n?/g;
+const BATCH_SEPARATOR = ' ||| ';
+const BATCH_SEPARATOR_REGEX = /\s*\|\|\|\s*/g;
 
 async function rateLimitedDelay(): Promise<void> {
     const now = Date.now();
@@ -99,7 +99,6 @@ export function getPreferredApi(): { api: ApiPreference; customUrl: string } {
 const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 500;
 
-// Supported languages (sorted alphabetically by name)
 export const SUPPORTED_LANGUAGES: { code: string; name: string }[] = [
     { code: 'af', name: 'Afrikaans' },
     { code: 'sq', name: 'Albanian' },
@@ -241,12 +240,10 @@ function cacheTranslation(text: string, targetLang: string, translation: string,
             .map(k => ({ key: k, entry: cache[k] }))
             .sort((a, b) => a.entry.timestamp - b.entry.timestamp);
         
-        // Remove expired first, then oldest if still over limit
         const toRemove = sorted.filter(item => 
             now - item.entry.timestamp > CACHE_EXPIRY
         ).map(item => item.key);
         
-        // If still over limit, remove oldest non-expired
         const remaining = keys.length - toRemove.length;
         if (remaining > MAX_CACHE_ENTRIES) {
             const validSorted = sorted.filter(item => 
@@ -274,7 +271,6 @@ async function translateWithGoogle(text: string, targetLang: string): Promise<{ 
     }
     
     const data = await response.json();
-    
     const detectedLang = data[2] || 'unknown';
     
     if (data && data[0]) {
@@ -331,12 +327,7 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
                 text: text,
                 q: text,
                 source: 'auto',
-                source_lang: 'auto',
-                sourceLang: 'auto',
                 target: targetLang,
-                target_lang: targetLang,
-                targetLang: targetLang,
-                to: targetLang,
                 format: 'text'
             })
         });
@@ -372,10 +363,8 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
 
 function isSameLanguage(detected: string, target: string): boolean {
     if (!detected || detected === 'unknown') return false;
-    
     const normalizedDetected = detected.toLowerCase().split('-')[0];
     const normalizedTarget = target.toLowerCase().split('-')[0];
-    
     return normalizedDetected === normalizedTarget;
 }
 
@@ -448,7 +437,6 @@ export async function translateText(text: string, targetLang: string): Promise<T
     } catch (primaryError) {
         warn(`Primary API (${preferredApi}) failed, trying fallbacks:`, primaryError);
         
-        // Try fallback APIs
         for (const fallbackApi of fallbackApis) {
             try {
                 const result = await fallbackApi.fn();
@@ -555,6 +543,10 @@ export async function translateLyrics(
         if (result.detectedLanguage) {
             detectedLang = result.detectedLanguage;
         }
+
+        if (translatedLines.length !== uncachedLines.length) {
+            throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines.length}. API might have stripped delimiters.`);
+        }
         
         uncachedLines.forEach((item, i) => {
             const translation = translatedLines[i]?.trim() || item.text;
@@ -566,20 +558,15 @@ export async function translateLyrics(
             });
         });
     } catch (error) {
-        logError('Batch translation failed, falling back to line-by-line:', error);
+        logError('Batch translation failed (fallback disabled to prevent rate limits):', error);
         
         for (const item of uncachedLines) {
-            try {
-                const result = await retryWithBackoff(() => translateText(item.text, targetLang));
-                cachedResults.set(item.index, result);
-            } catch {
-                cachedResults.set(item.index, {
-                    originalText: item.text,
-                    translatedText: item.text,
-                    targetLanguage: targetLang,
-                    wasTranslated: false
-                });
-            }
+            cachedResults.set(item.index, {
+                originalText: item.text,
+                translatedText: item.text,
+                targetLanguage: targetLang,
+                wasTranslated: false
+            });
         }
     }
     
@@ -587,7 +574,8 @@ export async function translateLyrics(
         results.push(cachedResults.get(i)!);
     }
     
-    if (currentTrackUri && results.length > 0) {
+    const someTranslated = results.some(r => r.wasTranslated);
+    if (currentTrackUri && results.length > 0 && someTranslated) {
         const translatedLines = results.map(r => r.translatedText);
         setTrackCache(currentTrackUri, targetLang, detectedLang, translatedLines, preferredApi);
     }

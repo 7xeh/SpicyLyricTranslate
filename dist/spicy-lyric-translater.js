@@ -1,18 +1,9 @@
 "use strict";
 var SpicyLyricTranslater = (() => {
-  var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
-  var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-    get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-  }) : x)(function(x) {
-    if (typeof require !== "undefined")
-      return require.apply(this, arguments);
-    throw Error('Dynamic require of "' + x + '" is not supported');
-  });
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
@@ -25,14 +16,6 @@ var SpicyLyricTranslater = (() => {
     }
     return to;
   };
-  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-    // If the importer is in node compatibility mode or this is not an ESM
-    // file that has been converted to a CommonJS file using a Babel-
-    // compatible transform (i.e. "__esModule" has not been set), then set
-    // "default" to the CommonJS "module.exports" for node compatibility.
-    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-    mod
-  ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
   // src/app.ts
@@ -40,29 +23,6 @@ var SpicyLyricTranslater = (() => {
   __export(app_exports, {
     default: () => app_default
   });
-
-  // src/utils/icons.ts
-  var Icons = {
-    Translate: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2.01h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
-    </svg>`,
-    TranslateOff: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2.01h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
-        <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>`,
-    Settings: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-    </svg>`,
-    Loading: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="spicy-translate-loading">
-        <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/>
-    </svg>`,
-    Connection: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-    </svg>`,
-    Users: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-    </svg>`
-  };
 
   // src/utils/storage.ts
   var STORAGE_PREFIX = "spicy-lyric-translater:";
@@ -185,9 +145,33 @@ var SpicyLyricTranslater = (() => {
   };
   var storage_default = storage;
 
+  // src/utils/state.ts
+  var state = {
+    isEnabled: storage.get("translation-enabled") === "true",
+    isTranslating: false,
+    targetLanguage: storage.get("target-language") || "en",
+    autoTranslate: storage.get("auto-translate") === "true",
+    showNotifications: storage.get("show-notifications") !== "false",
+    preferredApi: storage.get("preferred-api") || "google",
+    customApiUrl: storage.get("custom-api-url") || "",
+    lastTranslatedSongUri: null,
+    translatedLyrics: /* @__PURE__ */ new Map(),
+    lastViewMode: null,
+    translationAbortController: null,
+    overlayMode: storage.get("overlay-mode") || "replace",
+    detectedLanguage: null
+  };
+
   // src/utils/debug.ts
   var debugMode = storage.get("debug-mode") === "true";
   var PREFIX = "[SpicyLyricTranslater]";
+  function setDebugMode(enabled) {
+    debugMode = enabled;
+    storage.set("debug-mode", enabled.toString());
+    if (enabled) {
+      console.log(`${PREFIX} Debug mode enabled`);
+    }
+  }
   function debug(...args) {
     if (debugMode) {
       console.log(PREFIX, ...args);
@@ -309,6 +293,28 @@ var SpicyLyricTranslater = (() => {
       }
     }
   }
+  function deleteTrackCache(trackUri, targetLang) {
+    const storage2 = getStorage();
+    if (!storage2 || !trackUri)
+      return;
+    const index = getCacheIndex();
+    if (targetLang) {
+      const cacheKey = getCacheKey(trackUri, targetLang);
+      storage2.removeItem(cacheKey);
+      const fullKey = `${trackUri}:${targetLang}`;
+      index.trackUris = index.trackUris.filter((k) => k !== fullKey);
+    } else {
+      const keysToRemove = index.trackUris.filter((k) => k.startsWith(trackUri + ":"));
+      keysToRemove.forEach((k) => {
+        const [uri, lang] = [k.substring(0, k.lastIndexOf(":")), k.substring(k.lastIndexOf(":") + 1)];
+        const cacheKey = getCacheKey(uri, lang);
+        storage2.removeItem(cacheKey);
+      });
+      index.trackUris = index.trackUris.filter((k) => !k.startsWith(trackUri + ":"));
+    }
+    saveCacheIndex(index);
+    debug(`Deleted track cache for ${trackUri}${targetLang ? `:${targetLang}` : " (all languages)"}`);
+  }
   function pruneOldestEntries(count) {
     const storage2 = getStorage();
     if (!storage2)
@@ -406,6 +412,69 @@ var SpicyLyricTranslater = (() => {
       oldestTimestamp,
       sizeBytes
     };
+  }
+  function getAllCachedTracks() {
+    const storage2 = getStorage();
+    if (!storage2)
+      return [];
+    const tracks = [];
+    const nativeStorage = typeof localStorage !== "undefined" ? localStorage : null;
+    if (nativeStorage) {
+      try {
+        for (let i = 0; i < nativeStorage.length; i++) {
+          const key = nativeStorage.key(i);
+          if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+            try {
+              const entryStr = nativeStorage.getItem(key);
+              if (entryStr) {
+                const entry = JSON.parse(entryStr);
+                const keyParts = key.substring(CACHE_KEY_PREFIX.length);
+                const lastColonIdx = keyParts.lastIndexOf(":");
+                const uri = keyParts.substring(0, lastColonIdx).replace(/_/g, ":");
+                const lang = keyParts.substring(lastColonIdx + 1);
+                tracks.push({
+                  trackUri: uri,
+                  targetLang: lang,
+                  sourceLang: entry.lang,
+                  lineCount: entry.lines.length,
+                  timestamp: entry.timestamp,
+                  api: entry.api
+                });
+              }
+            } catch (e) {
+            }
+          }
+        }
+        if (tracks.length > 0) {
+          return tracks.sort((a, b) => b.timestamp - a.timestamp);
+        }
+      } catch (e) {
+        warn("Failed to iterate native localStorage:", e);
+      }
+    }
+    const index = getCacheIndex();
+    index.trackUris.forEach((fullKey) => {
+      const lastColonIdx = fullKey.lastIndexOf(":");
+      const uri = fullKey.substring(0, lastColonIdx);
+      const lang = fullKey.substring(lastColonIdx + 1);
+      const cacheKey = getCacheKey(uri, lang);
+      try {
+        const entryStr = storage2.getItem(cacheKey);
+        if (entryStr) {
+          const entry = JSON.parse(entryStr);
+          tracks.push({
+            trackUri: uri,
+            targetLang: lang,
+            sourceLang: entry.lang,
+            lineCount: entry.lines.length,
+            timestamp: entry.timestamp,
+            api: entry.api
+          });
+        }
+      } catch (e) {
+      }
+    });
+    return tracks.sort((a, b) => b.timestamp - a.timestamp);
   }
   function getCurrentTrackUri() {
     try {
@@ -950,7 +1019,6 @@ var SpicyLyricTranslater = (() => {
   };
   var isOverlayEnabled = false;
   var translationMap = /* @__PURE__ */ new Map();
-  var activeLineObserver = null;
   function getPIPWindow() {
     try {
       const docPiP = globalThis.documentPictureInPicture;
@@ -962,20 +1030,83 @@ var SpicyLyricTranslater = (() => {
     return null;
   }
   function getLyricLines(doc) {
-    return doc.querySelectorAll(".SpicyLyricsScrollContainer .line, .LyricsContent .line, .LyricsContainer .line");
+    const isPipDoc = !!doc.querySelector(".spicy-pip-wrapper");
+    if (isPipDoc) {
+      const pipLines = doc.querySelectorAll(".spicy-pip-wrapper #SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)");
+      if (pipLines.length > 0)
+        return pipLines;
+      const pipLinesAlt = doc.querySelectorAll(".spicy-pip-wrapper .SpicyLyricsScrollContainer .line:not(.musical-line)");
+      if (pipLinesAlt.length > 0)
+        return pipLinesAlt;
+      const pipLinesFallback = doc.querySelectorAll(".spicy-pip-wrapper .line:not(.musical-line)");
+      if (pipLinesFallback.length > 0)
+        return pipLinesFallback;
+    }
+    const scrollContainerLines = doc.querySelectorAll("#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)");
+    if (scrollContainerLines.length > 0)
+      return scrollContainerLines;
+    if (doc.body?.classList?.contains("SpicySidebarLyrics__Active")) {
+      const sidebarLines = doc.querySelectorAll(".Root__right-sidebar #SpicyLyricsPage .line:not(.musical-line)");
+      if (sidebarLines.length > 0)
+        return sidebarLines;
+    }
+    const compactLines = doc.querySelectorAll("#SpicyLyricsPage.ForcedCompactMode .line:not(.musical-line)");
+    if (compactLines.length > 0)
+      return compactLines;
+    const lyricsContentLines = doc.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
+    if (lyricsContentLines.length > 0)
+      return lyricsContentLines;
+    return doc.querySelectorAll(".SpicyLyricsScrollContainer .line:not(.musical-line), .LyricsContent .line:not(.musical-line), .LyricsContainer .line:not(.musical-line)");
   }
   function findLyricsContainer(doc) {
-    return doc.querySelector(".SpicyLyricsScrollContainer") || doc.querySelector(".LyricsContent") || doc.querySelector(".LyricsContainer");
+    const pipWrapper = doc.querySelector(".spicy-pip-wrapper");
+    if (pipWrapper) {
+      const pipScrollContainer = pipWrapper.querySelector("#SpicyLyricsPage .SpicyLyricsScrollContainer");
+      if (pipScrollContainer)
+        return pipScrollContainer;
+      const pipLyricsContent = pipWrapper.querySelector("#SpicyLyricsPage .LyricsContent");
+      if (pipLyricsContent)
+        return pipLyricsContent;
+      const pipPage = pipWrapper.querySelector("#SpicyLyricsPage");
+      if (pipPage)
+        return pipPage;
+      return pipWrapper;
+    }
+    const scrollContainer = doc.querySelector("#SpicyLyricsPage .SpicyLyricsScrollContainer");
+    if (scrollContainer)
+      return scrollContainer;
+    if (doc.body?.classList?.contains("SpicySidebarLyrics__Active")) {
+      const sidebarContainer = doc.querySelector(".Root__right-sidebar #SpicyLyricsPage .SpicyLyricsScrollContainer") || doc.querySelector(".Root__right-sidebar #SpicyLyricsPage .LyricsContent");
+      if (sidebarContainer)
+        return sidebarContainer;
+    }
+    return doc.querySelector("#SpicyLyricsPage .LyricsContent") || doc.querySelector(".LyricsContent") || doc.querySelector(".LyricsContainer");
   }
   function extractLineText(line) {
-    const words = line.querySelectorAll(".word, .syllable, .letterGroup, .letter");
+    const words = line.querySelectorAll(".word:not(.dot), .syllable, .letterGroup");
     if (words.length > 0) {
-      return Array.from(words).map((w) => w.textContent || "").join("");
+      return Array.from(words).map((w) => w.textContent?.trim() || "").join(" ").replace(/\s+/g, " ").trim();
+    }
+    const letters = line.querySelectorAll(".letter");
+    if (letters.length > 0) {
+      return Array.from(letters).map((l) => l.textContent || "").join("").trim();
     }
     return line.textContent?.trim() || "";
   }
   function isLineActive(line) {
-    return line.classList.contains("Active") || line.classList.contains("active") || line.classList.contains("current") || line.classList.contains("is-active") || line.classList.contains("playing") || line.getAttribute("data-active") === "true" || line.dataset.active === "true";
+    const classList = line.classList;
+    if (classList.contains("Active"))
+      return true;
+    if (classList.contains("active"))
+      return true;
+    if (classList.contains("current"))
+      return true;
+    if (classList.contains("is-active"))
+      return true;
+    if (!classList.contains("Sung") && !classList.contains("NotSung") && !classList.contains("musical-line")) {
+      return true;
+    }
+    return line.classList.contains("Active") || line.classList.contains("playing") || line.getAttribute("data-active") === "true" || line.dataset.active === "true";
   }
   function applyReplaceMode(doc) {
     const lines = getLyricLines(doc);
@@ -1059,7 +1190,6 @@ var SpicyLyricTranslater = (() => {
           if (translation === originalText)
             return;
           if (!line.parentNode) {
-            warn("Line element has no parent, skipping:", index);
             return;
           }
           line.classList.add("slt-overlay-parent");
@@ -1130,11 +1260,6 @@ var SpicyLyricTranslater = (() => {
         }
         activeLineObservers.delete(doc);
       }
-      const interval = activeLinePollIntervals.get(doc);
-      if (interval) {
-        clearInterval(interval);
-        activeLinePollIntervals.delete(doc);
-      }
       return;
     }
     const now = Date.now();
@@ -1168,8 +1293,39 @@ var SpicyLyricTranslater = (() => {
     } catch (err) {
     }
   }
-  var activeLinePollIntervals = /* @__PURE__ */ new Map();
   var activeLineObservers = /* @__PURE__ */ new Map();
+  var activeSyncIntervalId = null;
+  function startActiveSyncInterval() {
+    if (activeSyncIntervalId)
+      return;
+    activeSyncIntervalId = setInterval(() => {
+      if (!isOverlayEnabled)
+        return;
+      try {
+        onActiveLineChanged(document);
+        const pipWindow = getPIPWindow();
+        if (pipWindow) {
+          try {
+            const pipDoc = pipWindow.document;
+            if (pipDoc && pipDoc.body) {
+              onActiveLineChanged(pipDoc);
+              if (!activeLineObservers.has(pipDoc)) {
+                setupActiveLineObserver(pipDoc);
+              }
+            }
+          } catch (pipErr) {
+          }
+        }
+      } catch (e) {
+      }
+    }, 80);
+  }
+  function stopActiveSyncInterval() {
+    if (activeSyncIntervalId) {
+      clearInterval(activeSyncIntervalId);
+      activeSyncIntervalId = null;
+    }
+  }
   function setupActiveLineObserver(doc) {
     try {
       if (!isDocumentValid(doc)) {
@@ -1181,18 +1337,19 @@ var SpicyLyricTranslater = (() => {
         existingObserver.disconnect();
         activeLineObservers.delete(doc);
       }
-      const existingInterval = activeLinePollIntervals.get(doc);
-      if (existingInterval) {
-        clearInterval(existingInterval);
-        activeLinePollIntervals.delete(doc);
+      let lyricsContainer = findLyricsContainer(doc);
+      if (!lyricsContainer && doc.body.classList.contains("SpicySidebarLyrics__Active")) {
+        lyricsContainer = doc.querySelector(".Root__right-sidebar #SpicyLyricsPage");
       }
-      if (activeLineObserver) {
-        activeLineObserver.disconnect();
-        activeLineObserver = null;
+      if (!lyricsContainer) {
+        lyricsContainer = doc.querySelector(".spicy-pip-wrapper #SpicyLyricsPage");
       }
-      const lyricsContainer = findLyricsContainer(doc);
+      if (!lyricsContainer) {
+        lyricsContainer = doc.querySelector("#SpicyLyricsPage");
+      }
       if (!lyricsContainer) {
         debug("No lyrics container found for observer setup");
+        startActiveSyncInterval();
         return;
       }
       const observer = new MutationObserver((mutations) => {
@@ -1224,32 +1381,16 @@ var SpicyLyricTranslater = (() => {
       });
       observer.observe(lyricsContainer, {
         attributes: true,
-        attributeFilter: ["class", "data-active"],
+        attributeFilter: ["class", "data-active", "style"],
         subtree: true,
         childList: true
       });
       activeLineObservers.set(doc, observer);
-      const intervalId = setInterval(() => {
-        if (!isDocumentValid(doc)) {
-          clearInterval(intervalId);
-          activeLinePollIntervals.delete(doc);
-          const obs = activeLineObservers.get(doc);
-          if (obs) {
-            try {
-              obs.disconnect();
-            } catch {
-            }
-            activeLineObservers.delete(doc);
-          }
-          return;
-        }
-        if (isOverlayEnabled && currentConfig.mode === "interleaved") {
-          onActiveLineChanged(doc);
-        }
-      }, 250);
-      activeLinePollIntervals.set(doc, intervalId);
+      startActiveSyncInterval();
+      setTimeout(() => onActiveLineChanged(doc), 50);
     } catch (err) {
       warn("Failed to setup active line observer:", err);
+      startActiveSyncInterval();
     }
   }
   function enableOverlay(config) {
@@ -1276,18 +1417,11 @@ var SpicyLyricTranslater = (() => {
   function disableOverlay() {
     isOverlayEnabled = false;
     cleanupInterleavedTracking();
+    stopActiveSyncInterval();
     activeLineObservers.forEach((observer, doc) => {
       observer.disconnect();
     });
     activeLineObservers.clear();
-    activeLinePollIntervals.forEach((interval, doc) => {
-      clearInterval(interval);
-    });
-    activeLinePollIntervals.clear();
-    if (activeLineObserver) {
-      activeLineObserver.disconnect();
-      activeLineObserver = null;
-    }
     const cleanup = (doc) => {
       const overlay = doc.getElementById("spicy-translate-overlay");
       if (overlay)
@@ -1368,7 +1502,7 @@ body.slt-overlay-active .LyricsContent {}
     transition: color 0.3s ease, opacity 0.3s ease, text-shadow 0.4s cubic-bezier(0.25, 0.1, 0.25, 1), filter 0.3s ease;
     letter-spacing: 0.01em;
     text-shadow: none;
-    filter: blur(0.3px);
+    filter: blur(var(--slt-blur-amount, 1.5px));
 }
 
 .slt-interleaved-translation.slt-music-break {
@@ -1380,7 +1514,7 @@ body.slt-overlay-active .LyricsContent {}
 
 .slt-interleaved-translation:not(.active) {
     opacity: 0.6;
-    filter: blur(0.4px);
+    filter: blur(var(--slt-blur-amount, 1.5px));
     text-shadow: 0 0 0 transparent;
 }
 
@@ -1388,7 +1522,7 @@ body.slt-overlay-active .LyricsContent {}
     color: #fff;
     opacity: 1;
     font-weight: 600;
-    filter: none;
+    filter: blur(0px);
     text-shadow: 
         0 0 8px rgba(255, 255, 255, 0.6),
         0 0 16px rgba(255, 255, 255, 0.4),
@@ -1438,6 +1572,22 @@ body.slt-overlay-active .LyricsContent {}
     font-size: calc(0.78em * var(--slt-overlay-font-scale, 1));
     margin-top: 2px;
     margin-bottom: 4px;
+}
+
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .slt-interleaved-translation {
+    font-size: calc(0.65em * var(--slt-overlay-font-scale, 1));
+    margin-top: 1px;
+    margin-bottom: 3px;
+}
+
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .spicy-translation-text {
+    color: inherit;
+    font-family: inherit;
+}
+
+.spicy-pip-wrapper .spicy-translation-text {
+    color: inherit;
+    font-family: inherit;
 }
 `;
   }
@@ -1613,6 +1763,17 @@ body.slt-overlay-active .LyricsContent {}
     font-family: inherit;
 }
 
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .spicy-translation-text {
+    color: inherit;
+    font-family: inherit;
+}
+
+body.SpicySidebarLyrics__Active #SpicyLyricsPage .slt-interleaved-translation {
+    font-size: calc(0.65em * var(--slt-overlay-font-scale, 1));
+    margin-top: 2px;
+    margin-bottom: 4px;
+}
+
 @keyframes slt-ci-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
@@ -1767,7 +1928,7 @@ body.slt-overlay-active .LyricsContent {}
     padding: 4px 0 12px 0;
     line-height: 1.2;
     pointer-events: none;
-    transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
+    transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease, filter 0.3s ease;
     text-align: left;
     white-space: normal;
     word-wrap: break-word;
@@ -1776,7 +1937,18 @@ body.slt-overlay-active .LyricsContent {}
 
 .slt-interleaved-translation:not(.active) {
     opacity: 0.5;
-    filter: blur(0.5px);
+    filter: blur(var(--slt-blur-amount, 1.5px));
+}
+
+/* Sync blur with SpicyLyrics line blur when available */
+.line.Sung + .slt-interleaved-translation:not(.active),
+.line.NotSung + .slt-interleaved-translation:not(.active) {
+    filter: blur(calc(var(--BlurAmount, 1.5px) * 0.8));
+}
+
+.line.Active + .slt-interleaved-translation {
+    filter: blur(0px) !important;
+    opacity: 1 !important;
 }
 
 .slt-interleaved-translation.active {
@@ -1803,6 +1975,13 @@ body.slt-overlay-active .LyricsContent {}
 #SpicyLyricsPage.SidebarMode .slt-interleaved-translation {
     font-size: calc(0.78em * var(--slt-overlay-font-scale, 1));
 }
+
+body.SpicySidebarLyrics__Active .slt-interleaved-overlay .slt-interleaved-translation,
+body.SpicySidebarLyrics__Active .slt-interleaved-translation {
+    font-size: calc(0.65em * var(--slt-overlay-font-scale, 1));
+    margin-top: 1px;
+    margin-bottom: 3px;
+}
 `;
   function injectStyles() {
     const existingStyle = document.getElementById("spicy-lyric-translater-styles");
@@ -1821,7 +2000,7 @@ body.slt-overlay-active .LyricsContent {}
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.7.6" : "0.0.0";
+    return true ? "1.7.7" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
@@ -2320,6 +2499,859 @@ body.slt-overlay-active .LyricsContent {}
   var VERSION = CURRENT_VERSION;
   var REPO_URL = RELEASES_URL;
 
+  // src/utils/settings.ts
+  var SETTINGS_ID = "spicy-lyric-translater-settings";
+  function createNativeToggle(id, label, checked, onChange) {
+    const row = document.createElement("div");
+    row.className = "x-settings-row";
+    row.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" for="${id}">${label}</label>
+        </div>
+        <div class="x-settings-secondColumn">
+            <label class="x-toggle-wrapper">
+                <input id="${id}" class="x-toggle-input" type="checkbox" ${checked ? "checked" : ""}>
+                <span class="x-toggle-indicatorWrapper">
+                    <span class="x-toggle-indicator"></span>
+                </span>
+            </label>
+        </div>
+    `;
+    const input = row.querySelector("input");
+    input?.addEventListener("change", () => onChange(input.checked));
+    return row;
+  }
+  function createNativeDropdown(id, label, options, currentValue, onChange) {
+    const row = document.createElement("div");
+    row.className = "x-settings-row";
+    row.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" for="${id}">${label}</label>
+        </div>
+        <div class="x-settings-secondColumn">
+            <span>
+                <select class="main-dropDown-dropDown" id="${id}">
+                    ${options.map((opt) => `<option value="${opt.value}" ${opt.value === currentValue ? "selected" : ""}>${opt.text}</option>`).join("")}
+                </select>
+            </span>
+        </div>
+    `;
+    const select = row.querySelector("select");
+    select?.addEventListener("change", () => onChange(select.value));
+    return row;
+  }
+  function createNativeButton(id, label, buttonText, onClick) {
+    const row = document.createElement("div");
+    row.className = "x-settings-row";
+    row.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" for="${id}">${label}</label>
+        </div>
+        <div class="x-settings-secondColumn">
+            <button id="${id}" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small" data-encore-id="buttonSecondary" type="button">${buttonText}</button>
+        </div>
+    `;
+    const button = row.querySelector("button");
+    button?.addEventListener("click", onClick);
+    return row;
+  }
+  function createNativeSettingsSection() {
+    const section = document.createElement("div");
+    section.id = SETTINGS_ID;
+    section.innerHTML = `
+        <div class="x-settings-section">
+            <h2 class="e-91000-text encore-text-body-medium-bold encore-internal-color-text-base">Spicy Lyric Translater</h2>
+        </div>
+    `;
+    const sectionContent = section.querySelector(".x-settings-section");
+    const languageOptions = SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, text: l.name }));
+    sectionContent.appendChild(createNativeDropdown(
+      "slt-settings.target-language",
+      "Target Language",
+      languageOptions,
+      storage.get("target-language") || "en",
+      (value) => {
+        storage.set("target-language", value);
+        state.targetLanguage = value;
+      }
+    ));
+    sectionContent.appendChild(createNativeDropdown(
+      "slt-settings.overlay-mode",
+      "Translation Display",
+      [
+        { value: "replace", text: "Replace (default)" },
+        { value: "interleaved", text: "Below each line" }
+      ],
+      storage.get("overlay-mode") || "replace",
+      (value) => {
+        const mode = value;
+        storage.set("overlay-mode", mode);
+        state.overlayMode = mode;
+        setOverlayConfig({ mode });
+      }
+    ));
+    sectionContent.appendChild(createNativeDropdown(
+      "slt-settings.preferred-api",
+      "Translation API",
+      [
+        { value: "google", text: "Google Translate" },
+        { value: "libretranslate", text: "LibreTranslate" },
+        { value: "custom", text: "Custom API" }
+      ],
+      storage.get("preferred-api") || "google",
+      (value) => {
+        const api = value;
+        storage.set("preferred-api", api);
+        state.preferredApi = api;
+        setPreferredApi(api, storage.get("custom-api-url") || "");
+        const customRow = document.getElementById("slt-settings-custom-api-row");
+        if (customRow) {
+          customRow.style.display = api === "custom" ? "" : "none";
+        }
+      }
+    ));
+    const customApiRow = document.createElement("div");
+    customApiRow.id = "slt-settings-custom-api-row";
+    customApiRow.className = "x-settings-row";
+    customApiRow.style.display = storage.get("preferred-api") === "custom" ? "" : "none";
+    customApiRow.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" for="slt-settings.custom-api-url">Custom API URL</label>
+        </div>
+        <div class="x-settings-secondColumn">
+            <input type="text" id="slt-settings.custom-api-url" class="main-dropDown-dropDown" style="width: 200px;" value="${storage.get("custom-api-url") || ""}" placeholder="https://your-api.com/translate">
+        </div>
+    `;
+    const customApiInput = customApiRow.querySelector("input");
+    customApiInput?.addEventListener("change", () => {
+      storage.set("custom-api-url", customApiInput.value);
+      state.customApiUrl = customApiInput.value;
+      setPreferredApi(state.preferredApi, customApiInput.value);
+    });
+    sectionContent.appendChild(customApiRow);
+    sectionContent.appendChild(createNativeToggle(
+      "slt-settings.auto-translate",
+      "Auto-Translate on Song Change",
+      storage.get("auto-translate") === "true",
+      (checked) => {
+        storage.set("auto-translate", String(checked));
+        state.autoTranslate = checked;
+      }
+    ));
+    sectionContent.appendChild(createNativeToggle(
+      "slt-settings.show-notifications",
+      "Show Notifications",
+      storage.get("show-notifications") !== "false",
+      (checked) => {
+        storage.set("show-notifications", String(checked));
+        state.showNotifications = checked;
+      }
+    ));
+    sectionContent.appendChild(createNativeToggle(
+      "slt-settings.debug-mode",
+      "Debug Mode (Console Logging)",
+      storage.get("debug-mode") === "true",
+      (checked) => {
+        setDebugMode(checked);
+      }
+    ));
+    sectionContent.appendChild(createNativeButton(
+      "slt-settings.view-cache",
+      "View Translation Cache",
+      "View Cache",
+      () => openCacheViewer()
+    ));
+    sectionContent.appendChild(createNativeButton(
+      "slt-settings.clear-cache",
+      "Clear All Cached Translations",
+      "Clear Cache",
+      () => {
+        clearAllTrackCache();
+        clearTranslationCache();
+        if (state.showNotifications && Spicetify.showNotification) {
+          Spicetify.showNotification("All cached translations deleted!");
+        }
+      }
+    ));
+    sectionContent.appendChild(createNativeButton(
+      "slt-settings.check-updates",
+      `Version ${VERSION}`,
+      "Check for Updates",
+      async () => {
+        const btn = document.getElementById("slt-settings.check-updates");
+        if (btn) {
+          btn.textContent = "Checking...";
+          btn.disabled = true;
+        }
+        try {
+          const updateInfo = await getUpdateInfo();
+          if (updateInfo?.hasUpdate) {
+            checkForUpdates(true);
+          } else {
+            if (btn)
+              btn.textContent = "Up to date!";
+            setTimeout(() => {
+              if (btn) {
+                btn.textContent = "Check for Updates";
+                btn.disabled = false;
+              }
+            }, 2e3);
+            if (Spicetify.showNotification) {
+              Spicetify.showNotification("You are running the latest version!");
+            }
+          }
+        } catch (e) {
+          if (btn) {
+            btn.textContent = "Check for Updates";
+            btn.disabled = false;
+          }
+          if (Spicetify.showNotification) {
+            Spicetify.showNotification("Failed to check for updates", true);
+          }
+        }
+      }
+    ));
+    const githubRow = document.createElement("div");
+    githubRow.className = "x-settings-row";
+    githubRow.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued">GitHub Repository</label>
+        </div>
+        <div class="x-settings-secondColumn">
+            <a href="${REPO_URL}" target="_blank" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-iconTrailing-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small e-91000-button--trailing" data-encore-id="buttonSecondary">View<span aria-hidden="true" class="e-91000-button__icon-wrapper"><svg data-encore-id="icon" role="img" aria-hidden="true" class="e-91000-icon e-91000-baseline" viewBox="0 0 16 16" style="--encore-icon-height: var(--encore-graphic-size-decorative-smaller); --encore-icon-width: var(--encore-graphic-size-decorative-smaller);"><path d="M1 2.75A.75.75 0 0 1 1.75 2H7v1.5H2.5v11h10.219V9h1.5v6.25a.75.75 0 0 1-.75.75H1.75a.75.75 0 0 1-.75-.75z"></path><path d="M15 1v4.993a.75.75 0 1 1-1.5 0V3.56L8.78 8.28a.75.75 0 0 1-1.06-1.06l4.72-4.72h-2.433a.75.75 0 0 1 0-1.5z"></path></svg></span></a>
+        </div>
+    `;
+    sectionContent.appendChild(githubRow);
+    const shortcutRow = document.createElement("div");
+    shortcutRow.className = "x-settings-row";
+    shortcutRow.innerHTML = `
+        <div class="x-settings-firstColumn">
+            <span class="e-91000-text encore-text-marginal encore-internal-color-text-subdued">Keyboard shortcut: Alt+T to toggle translation</span>
+        </div>
+    `;
+    sectionContent.appendChild(shortcutRow);
+    return section;
+  }
+  function injectSettingsIntoPage() {
+    if (document.getElementById(SETTINGS_ID)) {
+      return;
+    }
+    const settingsContainer = document.querySelector(".x-settings-container") || document.querySelector('[data-testid="settings-page"]') || document.querySelector("main.x-settings-container");
+    if (!settingsContainer) {
+      debug("Settings container not found");
+      return;
+    }
+    debug("Found settings container, injecting settings...");
+    const settingsSection = createNativeSettingsSection();
+    const spicyLyricsSettings = document.getElementById("spicy-lyrics-settings");
+    const spicyLyricsDevSettings = document.getElementById("spicy-lyrics-dev-settings");
+    if (spicyLyricsDevSettings) {
+      spicyLyricsDevSettings.after(settingsSection);
+      debug("Settings injected after spicy-lyrics-dev-settings");
+    } else if (spicyLyricsSettings) {
+      spicyLyricsSettings.after(settingsSection);
+      debug("Settings injected after spicy-lyrics-settings");
+    } else {
+      const allSections = settingsContainer.querySelectorAll(".x-settings-section");
+      if (allSections.length > 0) {
+        const lastSection = allSections[allSections.length - 1];
+        const lastSectionParent = lastSection.closest("div:not(.x-settings-section):not(.x-settings-container)") || lastSection;
+        lastSectionParent.after(settingsSection);
+        debug("Settings injected after last settings section");
+      } else {
+        settingsContainer.appendChild(settingsSection);
+        debug("Settings appended to settings container");
+      }
+    }
+    debug("Settings injected into Spotify settings page");
+  }
+  function isOnSettingsPage() {
+    const hasSettingsContainer = !!document.querySelector(".x-settings-container");
+    const hasSettingsTestId = !!document.querySelector('[data-testid="settings-page"]');
+    const pathCheck = window.location.pathname.includes("preferences") || window.location.pathname.includes("settings") || window.location.href.includes("preferences") || window.location.href.includes("settings");
+    let historyCheck = false;
+    try {
+      const location = Spicetify.Platform?.History?.location;
+      if (location) {
+        historyCheck = location.pathname?.includes("preferences") || location.pathname?.includes("settings") || false;
+      }
+    } catch (e) {
+    }
+    return hasSettingsContainer || hasSettingsTestId || pathCheck || historyCheck;
+  }
+  function watchForSettingsPage() {
+    debug("Starting settings page watcher...");
+    if (isOnSettingsPage()) {
+      debug("Already on settings page, injecting...");
+      setTimeout(injectSettingsIntoPage, 100);
+      setTimeout(injectSettingsIntoPage, 500);
+    }
+    if (Spicetify.Platform?.History) {
+      Spicetify.Platform.History.listen((location) => {
+        debug("Navigation detected:", location?.pathname);
+        if (location?.pathname?.includes("preferences") || location?.pathname?.includes("settings")) {
+          setTimeout(injectSettingsIntoPage, 100);
+          setTimeout(injectSettingsIntoPage, 300);
+          setTimeout(injectSettingsIntoPage, 500);
+          setTimeout(injectSettingsIntoPage, 1e3);
+        }
+      });
+    }
+    const observer = new MutationObserver((mutations) => {
+      const settingsContainer = document.querySelector(".x-settings-container") || document.querySelector('[data-testid="settings-page"]');
+      if (settingsContainer && !document.getElementById(SETTINGS_ID)) {
+        debug("Settings container detected via MutationObserver");
+        injectSettingsIntoPage();
+      }
+      const ourSettings = document.getElementById(SETTINGS_ID);
+      const spicyLyricsDevSettings = document.getElementById("spicy-lyrics-dev-settings");
+      if (ourSettings && spicyLyricsDevSettings && ourSettings.previousElementSibling !== spicyLyricsDevSettings) {
+        spicyLyricsDevSettings.after(ourSettings);
+        debug("Repositioned settings after spicy-lyrics-dev-settings");
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+  function createSettingsUI() {
+    const container = document.createElement("div");
+    container.className = "slt-settings-container";
+    container.innerHTML = `
+        <style>
+            .slt-settings-container {
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+            .slt-setting-row {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .slt-setting-row label {
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--spice-text);
+            }
+            .slt-setting-row select,
+            .slt-setting-row input[type="text"] {
+                padding: 8px 12px;
+                border-radius: 4px;
+                border: 1px solid var(--spice-button-disabled);
+                background: var(--spice-card);
+                color: var(--spice-text);
+                font-size: 14px;
+            }
+            .slt-setting-row select:focus,
+            .slt-setting-row input[type="text"]:focus {
+                outline: none;
+                border-color: var(--spice-button);
+            }
+            .slt-toggle-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .slt-toggle {
+                position: relative;
+                width: 40px;
+                height: 20px;
+            }
+            .slt-toggle input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .slt-toggle-slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: var(--spice-button-disabled);
+                transition: .3s;
+                border-radius: 20px;
+            }
+            .slt-toggle-slider:before {
+                position: absolute;
+                content: "";
+                height: 16px;
+                width: 16px;
+                left: 2px;
+                bottom: 2px;
+                background-color: white;
+                transition: .3s;
+                border-radius: 50%;
+            }
+            .slt-toggle input:checked + .slt-toggle-slider {
+                background-color: var(--spice-button);
+            }
+            .slt-toggle input:checked + .slt-toggle-slider:before {
+                transform: translateX(20px);
+            }
+            .slt-button {
+                padding: 10px 20px;
+                border-radius: 500px;
+                border: none;
+                background: var(--spice-button);
+                color: var(--spice-text);
+                font-size: 14px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: transform 0.1s, background 0.2s;
+            }
+            .slt-button:hover {
+                transform: scale(1.02);
+                background: var(--spice-button-active);
+            }
+            .slt-button:active {
+                transform: scale(0.98);
+            }
+            .slt-description {
+                font-size: 12px;
+                color: var(--spice-subtext);
+                margin-top: -4px;
+            }
+        </style>
+        
+        <div class="slt-setting-row">
+            <label for="slt-target-language">Target Language</label>
+            <select id="slt-target-language">
+                ${SUPPORTED_LANGUAGES.map(
+      (l) => `<option value="${l.code}" ${l.code === (storage.get("target-language") || "en") ? "selected" : ""}>${l.name}</option>`
+    ).join("")}
+            </select>
+        </div>
+        
+        <div class="slt-setting-row">
+            <label for="slt-overlay-mode">Translation Display</label>
+            <select id="slt-overlay-mode">
+                <option value="replace" ${(storage.get("overlay-mode") || "replace") === "replace" ? "selected" : ""}>Replace (default)</option>
+                <option value="interleaved" ${storage.get("overlay-mode") === "interleaved" ? "selected" : ""}>Below each line</option>
+            </select>
+            <span class="slt-description">How translated lyrics are displayed</span>
+        </div>
+        
+        <div class="slt-setting-row">
+            <label for="slt-preferred-api">Translation API</label>
+            <select id="slt-preferred-api">
+                <option value="google" ${(storage.get("preferred-api") || "google") === "google" ? "selected" : ""}>Google Translate</option>
+                <option value="libretranslate" ${storage.get("preferred-api") === "libretranslate" ? "selected" : ""}>LibreTranslate</option>
+                <option value="custom" ${storage.get("preferred-api") === "custom" ? "selected" : ""}>Custom API</option>
+            </select>
+        </div>
+        
+        <div class="slt-setting-row" id="slt-custom-api-row" style="display: ${storage.get("preferred-api") === "custom" ? "flex" : "none"}">
+            <label for="slt-custom-api-url">Custom API URL</label>
+            <input type="text" id="slt-custom-api-url" value="${storage.get("custom-api-url") || ""}" placeholder="https://your-api.com/translate">
+            <span class="slt-description">LibreTranslate-compatible API endpoint</span>
+        </div>
+        
+        <div class="slt-setting-row slt-toggle-row">
+            <label for="slt-auto-translate">Auto-Translate on Song Change</label>
+            <label class="slt-toggle">
+                <input type="checkbox" id="slt-auto-translate" ${storage.get("auto-translate") === "true" ? "checked" : ""}>
+                <span class="slt-toggle-slider"></span>
+            </label>
+        </div>
+        
+        <div class="slt-setting-row slt-toggle-row">
+            <label for="slt-show-notifications">Show Notifications</label>
+            <label class="slt-toggle">
+                <input type="checkbox" id="slt-show-notifications" ${storage.get("show-notifications") !== "false" ? "checked" : ""}>
+                <span class="slt-toggle-slider"></span>
+            </label>
+        </div>
+        
+        <div class="slt-setting-row slt-toggle-row">
+            <label for="slt-debug-mode">Debug Mode (Console Logging)</label>
+            <label class="slt-toggle">
+                <input type="checkbox" id="slt-debug-mode" ${storage.get("debug-mode") === "true" ? "checked" : ""}>
+                <span class="slt-toggle-slider"></span>
+            </label>
+        </div>
+        
+        <div class="slt-setting-row">
+            <button class="slt-button" id="slt-view-cache">View Translation Cache</button>
+        </div>
+        
+        <div class="slt-setting-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="font-size: 13px; color: var(--spice-subtext);">Version ${VERSION}</span>
+                <span style="margin: 0 8px; color: var(--spice-subtext);">\u2022</span>
+                <a href="${REPO_URL}" target="_blank" style="font-size: 13px; color: var(--spice-button);">GitHub</a>
+            </div>
+            <button class="slt-button" id="slt-check-updates" style="padding: 8px 16px; font-size: 12px;">Check for Updates</button>
+        </div>
+        
+        <div class="slt-setting-row" style="padding-top: 0; opacity: 0.6;">
+            <span class="slt-description">Keyboard shortcut: Alt+T to toggle translation</span>
+        </div>
+    `;
+    setTimeout(() => {
+      const targetLangSelect = container.querySelector("#slt-target-language");
+      const overlayModeSelect = container.querySelector("#slt-overlay-mode");
+      const preferredApiSelect = container.querySelector("#slt-preferred-api");
+      const customApiUrlInput = container.querySelector("#slt-custom-api-url");
+      const customApiRow = container.querySelector("#slt-custom-api-row");
+      const autoTranslateCheckbox = container.querySelector("#slt-auto-translate");
+      const showNotificationsCheckbox = container.querySelector("#slt-show-notifications");
+      const debugModeCheckbox = container.querySelector("#slt-debug-mode");
+      const viewCacheButton = container.querySelector("#slt-view-cache");
+      const checkUpdatesButton = container.querySelector("#slt-check-updates");
+      targetLangSelect?.addEventListener("change", () => {
+        storage.set("target-language", targetLangSelect.value);
+        state.targetLanguage = targetLangSelect.value;
+      });
+      overlayModeSelect?.addEventListener("change", () => {
+        const mode = overlayModeSelect.value;
+        storage.set("overlay-mode", mode);
+        state.overlayMode = mode;
+        setOverlayConfig({ mode });
+      });
+      preferredApiSelect?.addEventListener("change", () => {
+        const api = preferredApiSelect.value;
+        storage.set("preferred-api", api);
+        state.preferredApi = api;
+        setPreferredApi(api, customApiUrlInput?.value || "");
+        if (customApiRow) {
+          customApiRow.style.display = api === "custom" ? "flex" : "none";
+        }
+      });
+      customApiUrlInput?.addEventListener("change", () => {
+        storage.set("custom-api-url", customApiUrlInput.value);
+        state.customApiUrl = customApiUrlInput.value;
+        setPreferredApi(state.preferredApi, customApiUrlInput.value);
+      });
+      autoTranslateCheckbox?.addEventListener("change", () => {
+        storage.set("auto-translate", String(autoTranslateCheckbox.checked));
+        state.autoTranslate = autoTranslateCheckbox.checked;
+      });
+      showNotificationsCheckbox?.addEventListener("change", () => {
+        storage.set("show-notifications", String(showNotificationsCheckbox.checked));
+        state.showNotifications = showNotificationsCheckbox.checked;
+      });
+      debugModeCheckbox?.addEventListener("change", () => {
+        setDebugMode(debugModeCheckbox.checked);
+      });
+      viewCacheButton?.addEventListener("click", () => {
+        Spicetify.PopupModal?.hide();
+        setTimeout(() => openCacheViewer(), 150);
+      });
+      checkUpdatesButton?.addEventListener("click", async () => {
+        checkUpdatesButton.textContent = "Checking...";
+        checkUpdatesButton.disabled = true;
+        try {
+          const updateInfo = await getUpdateInfo();
+          if (updateInfo?.hasUpdate) {
+            Spicetify.PopupModal?.hide();
+            setTimeout(() => checkForUpdates(true), 150);
+          } else {
+            checkUpdatesButton.textContent = "Up to date!";
+            setTimeout(() => {
+              checkUpdatesButton.textContent = "Check for Updates";
+              checkUpdatesButton.disabled = false;
+            }, 2e3);
+            if (Spicetify.showNotification) {
+              Spicetify.showNotification("You are running the latest version!");
+            }
+          }
+        } catch (e) {
+          checkUpdatesButton.textContent = "Check for Updates";
+          checkUpdatesButton.disabled = false;
+          if (Spicetify.showNotification) {
+            Spicetify.showNotification("Failed to check for updates", true);
+          }
+        }
+      });
+    }, 0);
+    return container;
+  }
+  function formatBytes(bytes) {
+    if (bytes < 1024)
+      return bytes + " B";
+    if (bytes < 1024 * 1024)
+      return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  }
+  function formatDate(timestamp) {
+    return new Date(timestamp).toLocaleDateString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+  function createCacheViewerUI() {
+    const stats = getTrackCacheStats();
+    const cachedTracks = getAllCachedTracks();
+    const container = document.createElement("div");
+    container.className = "slt-cache-viewer";
+    container.innerHTML = `
+        <style>
+            .slt-cache-viewer {
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                max-height: 60vh;
+            }
+            .slt-cache-stats {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+                padding: 12px;
+                background: var(--spice-card);
+                border-radius: 8px;
+            }
+            .slt-stat {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .slt-stat-label {
+                font-size: 11px;
+                color: var(--spice-subtext);
+                text-transform: uppercase;
+            }
+            .slt-stat-value {
+                font-size: 18px;
+                font-weight: 600;
+                color: var(--spice-text);
+            }
+            .slt-cache-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                overflow-y: auto;
+                max-height: 300px;
+                padding-right: 8px;
+            }
+            .slt-cache-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 12px;
+                background: var(--spice-card);
+                border-radius: 6px;
+                gap: 12px;
+            }
+            .slt-cache-item-info {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                flex: 1;
+                min-width: 0;
+            }
+            .slt-cache-item-title {
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--spice-text);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .slt-cache-item-artist {
+                font-size: 12px;
+                color: var(--spice-subtext);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .slt-cache-item-meta {
+                font-size: 11px;
+                color: var(--spice-subtext);
+                opacity: 0.7;
+            }
+            .slt-cache-delete {
+                padding: 6px 10px;
+                border-radius: 4px;
+                border: none;
+                background: rgba(255, 80, 80, 0.2);
+                color: #ff5050;
+                font-size: 12px;
+                cursor: pointer;
+                transition: background 0.2s;
+                flex-shrink: 0;
+            }
+            .slt-cache-delete:hover {
+                background: rgba(255, 80, 80, 0.4);
+            }
+            .slt-cache-delete-all {
+                padding: 10px 20px;
+                border-radius: 500px;
+                border: none;
+                background: rgba(255, 80, 80, 0.2);
+                color: #ff5050;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+            .slt-cache-delete-all:hover {
+                background: rgba(255, 80, 80, 0.4);
+            }
+            .slt-empty-cache {
+                text-align: center;
+                padding: 24px;
+                color: var(--spice-subtext);
+                font-size: 14px;
+            }
+            .slt-cache-actions {
+                display: flex;
+                justify-content: center;
+                padding-top: 8px;
+            }
+        </style>
+        
+        <div class="slt-cache-stats">
+            <div class="slt-stat">
+                <span class="slt-stat-label">Cached Tracks</span>
+                <span class="slt-stat-value" id="slt-stat-tracks">${stats.trackCount}</span>
+            </div>
+            <div class="slt-stat">
+                <span class="slt-stat-label">Total Lines</span>
+                <span class="slt-stat-value" id="slt-stat-lines">${stats.totalLines}</span>
+            </div>
+            <div class="slt-stat">
+                <span class="slt-stat-label">Cache Size</span>
+                <span class="slt-stat-value" id="slt-stat-size">${formatBytes(stats.sizeBytes)}</span>
+            </div>
+            <div class="slt-stat">
+                <span class="slt-stat-label">Oldest Entry</span>
+                <span class="slt-stat-value">${stats.oldestTimestamp ? formatDate(stats.oldestTimestamp) : "N/A"}</span>
+            </div>
+        </div>
+        
+        <div class="slt-cache-list" id="slt-cache-list">
+            ${cachedTracks.length === 0 ? '<div class="slt-empty-cache">No cached translations</div>' : cachedTracks.sort((a, b) => b.timestamp - a.timestamp).map((track, index) => {
+      const trackId = track.trackUri.replace("spotify:track:", "");
+      return `
+                        <div class="slt-cache-item" data-uri="${track.trackUri}" data-lang="${track.targetLang}">
+                            <div class="slt-cache-item-info">
+                                <span class="slt-cache-item-title">Track ID: ${trackId}</span>
+                                <span class="slt-cache-item-meta">${track.sourceLang} \u2192 ${track.targetLang} \xB7 ${track.lineCount} lines \xB7 ${formatDate(track.timestamp)}</span>
+                            </div>
+                            <button class="slt-cache-delete" data-index="${index}">Delete</button>
+                        </div>
+                    `;
+    }).join("")}
+        </div>
+        
+        ${cachedTracks.length > 0 ? `
+        <div class="slt-cache-actions">
+            <button class="slt-cache-delete-all" id="slt-delete-all-cache">Delete All Cached Translations</button>
+        </div>
+        ` : ""}
+    `;
+    setTimeout(() => {
+      container.querySelectorAll(".slt-cache-delete").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const item = e.target.closest(".slt-cache-item");
+          if (item) {
+            const uri = item.dataset.uri;
+            const lang = item.dataset.lang;
+            if (uri) {
+              deleteTrackCache(uri, lang);
+              item.remove();
+              const newStats = getTrackCacheStats();
+              const tracksEl = container.querySelector("#slt-stat-tracks");
+              const linesEl = container.querySelector("#slt-stat-lines");
+              const sizeEl = container.querySelector("#slt-stat-size");
+              if (tracksEl)
+                tracksEl.textContent = String(newStats.trackCount);
+              if (linesEl)
+                linesEl.textContent = String(newStats.totalLines);
+              if (sizeEl)
+                sizeEl.textContent = formatBytes(newStats.sizeBytes);
+              const list = container.querySelector("#slt-cache-list");
+              if (list && list.querySelectorAll(".slt-cache-item").length === 0) {
+                list.innerHTML = '<div class="slt-empty-cache">No cached translations</div>';
+                const actionsDiv = container.querySelector(".slt-cache-actions");
+                if (actionsDiv)
+                  actionsDiv.remove();
+              }
+            }
+          }
+        });
+      });
+      const deleteAllBtn = container.querySelector("#slt-delete-all-cache");
+      deleteAllBtn?.addEventListener("click", () => {
+        clearAllTrackCache();
+        clearTranslationCache();
+        const tracksEl = container.querySelector("#slt-stat-tracks");
+        const linesEl = container.querySelector("#slt-stat-lines");
+        const sizeEl = container.querySelector("#slt-stat-size");
+        if (tracksEl)
+          tracksEl.textContent = "0";
+        if (linesEl)
+          linesEl.textContent = "0";
+        if (sizeEl)
+          sizeEl.textContent = "0 B";
+        const list = container.querySelector("#slt-cache-list");
+        if (list)
+          list.innerHTML = '<div class="slt-empty-cache">No cached translations</div>';
+        const actionsDiv = container.querySelector(".slt-cache-actions");
+        if (actionsDiv)
+          actionsDiv.remove();
+        if (state.showNotifications && Spicetify.showNotification) {
+          Spicetify.showNotification("All cached translations deleted!");
+        }
+      });
+    }, 0);
+    return container;
+  }
+  function openCacheViewer() {
+    if (Spicetify.PopupModal) {
+      Spicetify.PopupModal.display({
+        title: "Translation Cache",
+        content: createCacheViewerUI(),
+        isLarge: true
+      });
+    }
+  }
+  function openSettingsModal() {
+    if (Spicetify.PopupModal) {
+      Spicetify.PopupModal.display({
+        title: "Spicy Lyric Translater Settings",
+        content: createSettingsUI(),
+        isLarge: false
+      });
+    }
+  }
+  async function registerSettings() {
+    while (typeof Spicetify === "undefined" || !Spicetify.Platform) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    watchForSettingsPage();
+    if (Spicetify.Platform?.History) {
+      const registerMenuItem = () => {
+        if (Spicetify.Menu) {
+          try {
+            new Spicetify.Menu.Item(
+              "Spicy Lyric Translater",
+              false,
+              openSettingsModal
+            ).register();
+            info("Settings menu item registered");
+            return true;
+          } catch (e) {
+            debug("Menu.Item not available:", e);
+          }
+        }
+        return false;
+      };
+      if (!registerMenuItem()) {
+        setTimeout(registerMenuItem, 2e3);
+      }
+    }
+    debug("Settings registration complete");
+  }
+
   // src/utils/connectivity.ts
   var API_BASE = "https://7xeh.dev/apps/spicylyrictranslate/api/connectivity.php";
   var HEARTBEAT_INTERVAL = 3e4;
@@ -2343,7 +3375,6 @@ body.slt-overlay-active .LyricsContent {}
   };
   var heartbeatInterval = null;
   var latencyInterval = null;
-  var jitterInterval = null;
   var containerElement = null;
   function getLatencyClass(latencyMs) {
     if (latencyMs <= LATENCY_THRESHOLDS.GREAT)
@@ -2476,10 +3507,7 @@ body.slt-overlay-active .LyricsContent {}
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal
-      });
+      const response = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(id);
       return response;
     } catch (error2) {
@@ -2494,14 +3522,14 @@ body.slt-overlay-active .LyricsContent {}
       if (!response.ok)
         return null;
       await response.json();
-      const latency = Math.round(performance.now() - startTime);
-      return latency;
+      return Math.round(performance.now() - startTime);
     } catch (error2) {
-      console.warn("[SpicyLyricTranslater] Latency check failed:", error2);
       return null;
     }
   }
   async function sendHeartbeat() {
+    if (storage.get("share-usage-data") === "false")
+      return false;
     try {
       const params = new URLSearchParams({
         action: "heartbeat",
@@ -2510,9 +3538,8 @@ body.slt-overlay-active .LyricsContent {}
         active: indicatorState.isViewingLyrics ? "true" : "false"
       });
       const response = await fetchWithTimeout(`${API_BASE}?${params}`);
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`HTTP ${response.status}`);
-      }
       const data = await response.json();
       if (data.success) {
         indicatorState.sessionId = data.sessionId || indicatorState.sessionId;
@@ -2528,11 +3555,12 @@ body.slt-overlay-active .LyricsContent {}
       }
       return false;
     } catch (error2) {
-      console.warn("[SpicyLyricTranslater] Heartbeat failed:", error2);
       return false;
     }
   }
   async function connect() {
+    if (storage.get("share-usage-data") === "false")
+      return false;
     indicatorState.state = "connecting";
     updateUI();
     try {
@@ -2541,9 +3569,8 @@ body.slt-overlay-active .LyricsContent {}
         version: storage.get("extension-version") || "1.0.0"
       });
       const response = await fetchWithTimeout(`${API_BASE}?${params}`);
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`HTTP ${response.status}`);
-      }
       const data = await response.json();
       if (data.success) {
         indicatorState.sessionId = data.sessionId;
@@ -2555,7 +3582,6 @@ body.slt-overlay-active .LyricsContent {}
         const latency = await measureLatency();
         indicatorState.latencyMs = latency;
         updateUI();
-        console.log("[SpicyLyricTranslater] Connected to connectivity service");
         return true;
       }
       throw new Error("Connection failed");
@@ -2564,7 +3590,7 @@ body.slt-overlay-active .LyricsContent {}
       indicatorState.state = "error";
       updateUI();
       setTimeout(() => {
-        if (indicatorState.state === "error") {
+        if (indicatorState.state === "error" && storage.get("share-usage-data") !== "false") {
           indicatorState.state = "reconnecting";
           updateUI();
           connect();
@@ -2582,10 +3608,6 @@ body.slt-overlay-active .LyricsContent {}
       clearInterval(latencyInterval);
       latencyInterval = null;
     }
-    if (jitterInterval) {
-      clearInterval(jitterInterval);
-      jitterInterval = null;
-    }
     if (indicatorState.sessionId) {
       try {
         const params = new URLSearchParams({
@@ -2601,23 +3623,6 @@ body.slt-overlay-active .LyricsContent {}
     indicatorState.latencyMs = null;
     indicatorState.activeUsers = 0;
     updateUI();
-  }
-  function applyJitter() {
-    if (indicatorState.latencyMs === null)
-      return;
-    const jitter = indicatorState.latencyMs + Math.floor(Math.random() * 5 - 2);
-    indicatorState.latencyMs = Math.max(1, jitter);
-    if (containerElement) {
-      const pingEl = containerElement.querySelector(".slt-ci-ping");
-      const dot = containerElement.querySelector(".slt-ci-dot");
-      if (pingEl && indicatorState.latencyMs !== null) {
-        pingEl.textContent = `${indicatorState.latencyMs}ms`;
-      }
-      if (dot && indicatorState.latencyMs !== null) {
-        dot.classList.remove("slt-ci-great", "slt-ci-ok", "slt-ci-bad", "slt-ci-horrible");
-        dot.classList.add(getLatencyClass(indicatorState.latencyMs));
-      }
-    }
   }
   function startPeriodicChecks() {
     heartbeatInterval = setInterval(async () => {
@@ -2636,6 +3641,18 @@ body.slt-overlay-active .LyricsContent {}
       }
     }, LATENCY_CHECK_INTERVAL);
   }
+  function getIndicatorContainer() {
+    const topBarContentRight = document.querySelector(".main-topBar-topbarContentRight");
+    if (topBarContentRight)
+      return topBarContentRight;
+    const userWidget = document.querySelector(".main-userWidget-box");
+    if (userWidget && userWidget.parentNode)
+      return userWidget.parentNode;
+    const historyButtons = document.querySelector(".main-topBar-historyButtons");
+    if (historyButtons && historyButtons.parentNode)
+      return historyButtons.parentNode;
+    return null;
+  }
   function waitForElement(selector, timeout = 1e4) {
     return new Promise((resolve) => {
       const element = document.querySelector(selector);
@@ -2650,10 +3667,7 @@ body.slt-overlay-active .LyricsContent {}
           resolve(el);
         }
       });
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
+      observer.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => {
         observer.disconnect();
         resolve(document.querySelector(selector));
@@ -2661,28 +3675,38 @@ body.slt-overlay-active .LyricsContent {}
     });
   }
   async function appendToDOM() {
-    if (containerElement && containerElement.parentNode) {
+    if (containerElement && containerElement.parentNode)
+      return true;
+    const container = getIndicatorContainer();
+    if (container) {
+      containerElement = createIndicatorElement();
+      container.insertBefore(containerElement, container.firstChild);
       return true;
     }
     const topBarContentRight = await waitForElement(".main-topBar-topbarContentRight");
     if (topBarContentRight) {
       containerElement = createIndicatorElement();
       topBarContentRight.insertBefore(containerElement, topBarContentRight.firstChild);
-      console.log("[SpicyLyricTranslater] Connection indicator appended to topbar content right");
       return true;
     }
-    console.log("[SpicyLyricTranslater] Could not find topbar content right container after waiting");
     return false;
   }
+  function removeFromDOM() {
+    if (containerElement && containerElement.parentNode) {
+      containerElement.parentNode.removeChild(containerElement);
+    }
+    containerElement = null;
+  }
   async function initConnectionIndicator() {
-    if (indicatorState.isInitialized)
-      return;
-    console.log("[SpicyLyricTranslater] Initializing connection indicator...");
-    const appended = await appendToDOM();
-    if (!appended) {
-      console.log("[SpicyLyricTranslater] Could not find container for connection indicator");
+    if (storage.get("share-usage-data") === "false") {
+      cleanupConnectionIndicator();
       return;
     }
+    if (indicatorState.isInitialized)
+      return;
+    const appended = await appendToDOM();
+    if (!appended)
+      return;
     indicatorState.isInitialized = true;
     const connected = await connect();
     if (connected) {
@@ -2694,10 +3718,6 @@ body.slt-overlay-active .LyricsContent {}
           clearInterval(latencyInterval);
           latencyInterval = null;
         }
-        if (jitterInterval) {
-          clearInterval(jitterInterval);
-          jitterInterval = null;
-        }
       } else {
         if (indicatorState.state === "connected") {
           latencyInterval = setInterval(async () => {
@@ -2707,7 +3727,6 @@ body.slt-overlay-active .LyricsContent {}
               updateUI();
             }
           }, LATENCY_CHECK_INTERVAL);
-          jitterInterval = setInterval(applyJitter, 1e3);
           measureLatency().then((latency) => {
             if (latency !== null) {
               indicatorState.latencyMs = latency;
@@ -2721,10 +3740,17 @@ body.slt-overlay-active .LyricsContent {}
       disconnect();
     });
   }
+  function cleanupConnectionIndicator() {
+    disconnect();
+    removeFromDOM();
+    indicatorState.isInitialized = false;
+  }
   function getConnectionState() {
     return { ...indicatorState };
   }
   async function refreshConnection() {
+    if (storage.get("share-usage-data") === "false")
+      return;
     await disconnect();
     await connect();
     if (indicatorState.state === "connected") {
@@ -2739,6 +3765,29 @@ body.slt-overlay-active .LyricsContent {}
       }
     }
   }
+
+  // src/utils/icons.ts
+  var Icons = {
+    Translate: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2.01h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+    </svg>`,
+    TranslateOff: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2.01h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+        <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>`,
+    Settings: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+    </svg>`,
+    Loading: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="spicy-translate-loading">
+        <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/>
+    </svg>`,
+    Connection: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+    </svg>`,
+    Users: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    </svg>`
+  };
 
   // src/utils/languageDetection.ts
   var detectionCache = /* @__PURE__ */ new Map();
@@ -2906,38 +3955,42 @@ body.slt-overlay-active .LyricsContent {}
     };
   }
 
-  // src/app.ts
-  var state = {
-    isEnabled: false,
-    isTranslating: false,
-    targetLanguage: storage.get("target-language") || "en",
-    autoTranslate: storage.get("auto-translate") === "true",
-    showNotifications: storage.get("show-notifications") !== "false",
-    preferredApi: storage.get("preferred-api") || "google",
-    customApiUrl: storage.get("custom-api-url") || "",
-    lastTranslatedSongUri: null,
-    translatedLyrics: /* @__PURE__ */ new Map(),
-    lastViewMode: null,
-    translationAbortController: null,
-    overlayMode: storage.get("overlay-mode") || "replace",
-    detectedLanguage: null
-  };
-  var viewControlsObserver = null;
+  // src/utils/core.ts
   var lyricsObserver = null;
   var translateDebounceTimer = null;
   var viewModeIntervalId = null;
-  function formatBytes(bytes) {
-    if (bytes === 0)
-      return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  function getPIPWindow2() {
+    try {
+      const docPiP = globalThis.documentPictureInPicture;
+      if (docPiP && docPiP.window)
+        return docPiP.window;
+    } catch (e) {
+    }
+    return null;
   }
-  function truncateText(text, maxLength) {
-    if (text.length <= maxLength)
-      return text;
-    return text.substring(0, maxLength - 3) + "...";
+  function isSpicyLyricsOpen() {
+    if (document.querySelector("#SpicyLyricsPage") || document.querySelector(".spicy-pip-wrapper #SpicyLyricsPage") || document.querySelector(".Cinema--Container") || document.querySelector(".spicy-lyrics-cinema") || document.body.classList.contains("SpicySidebarLyrics__Active")) {
+      return true;
+    }
+    const pipWindow = getPIPWindow2();
+    if (pipWindow?.document.querySelector("#SpicyLyricsPage")) {
+      return true;
+    }
+    return false;
+  }
+  function getLyricsContent() {
+    const pipWindow = getPIPWindow2();
+    if (pipWindow) {
+      const pipContent = pipWindow.document.querySelector("#SpicyLyricsPage .LyricsContainer .LyricsContent") || pipWindow.document.querySelector("#SpicyLyricsPage .LyricsContent") || pipWindow.document.querySelector(".LyricsContent");
+      if (pipContent)
+        return pipContent;
+    }
+    if (document.body.classList.contains("SpicySidebarLyrics__Active")) {
+      const sidebarContent = document.querySelector(".Root__right-sidebar #SpicyLyricsPage .LyricsContainer .LyricsContent") || document.querySelector(".Root__right-sidebar #SpicyLyricsPage .LyricsContent");
+      if (sidebarContent)
+        return sidebarContent;
+    }
+    return document.querySelector("#SpicyLyricsPage .LyricsContainer .LyricsContent") || document.querySelector("#SpicyLyricsPage .LyricsContent") || document.querySelector(".spicy-pip-wrapper .LyricsContent") || document.querySelector(".Cinema--Container .LyricsContent") || document.querySelector(".LyricsContainer .LyricsContent");
   }
   function waitForElement2(selector, timeout = 1e4) {
     return new Promise((resolve) => {
@@ -2953,55 +4006,58 @@ body.slt-overlay-active .LyricsContent {}
           resolve(el);
         }
       });
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
+      observer.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => {
         observer.disconnect();
         resolve(null);
       }, timeout);
     });
   }
-  function isSpicyLyricsOpen() {
-    return !!(document.querySelector("#SpicyLyricsPage") || document.querySelector(".spicy-pip-wrapper #SpicyLyricsPage") || document.querySelector(".Cinema--Container") || document.querySelector(".spicy-lyrics-cinema"));
-  }
-  function getViewControls() {
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipViewControls = pipWindow.document.querySelector("#SpicyLyricsPage .ViewControls");
-      if (pipViewControls)
-        return pipViewControls;
-    }
-    return document.querySelector("#SpicyLyricsPage .ViewControls") || document.querySelector(".Cinema--Container .ViewControls") || document.querySelector(".spicy-pip-wrapper .ViewControls") || document.querySelector(".ViewControls");
-  }
-  function getPIPWindow2() {
-    try {
-      const docPiP = globalThis.documentPictureInPicture;
-      if (docPiP && docPiP.window) {
-        return docPiP.window;
+  function updateButtonState() {
+    const buttons = [
+      document.querySelector("#TranslateToggle"),
+      getPIPWindow2()?.document.querySelector("#TranslateToggle")
+    ];
+    buttons.forEach((button) => {
+      if (button) {
+        button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+        button.classList.toggle("active", state.isEnabled);
+        const btnWithTippy = button;
+        if (btnWithTippy._tippy) {
+          btnWithTippy._tippy.setContent(state.isEnabled ? "Disable Translation" : "Enable Translation");
+        }
       }
-    } catch (e) {
-    }
-    return null;
+    });
   }
-  function getLyricsContent() {
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipContent = pipWindow.document.querySelector("#SpicyLyricsPage .LyricsContent") || pipWindow.document.querySelector(".LyricsContainer .LyricsContent");
-      if (pipContent)
-        return pipContent;
-    }
-    return document.querySelector("#SpicyLyricsPage .LyricsContent") || document.querySelector(".spicy-pip-wrapper .LyricsContent") || document.querySelector(".Cinema--Container .LyricsContent") || document.querySelector(".LyricsContainer .LyricsContent") || document.querySelector(".LyricsContent");
+  function restoreButtonState() {
+    const buttons = [
+      document.querySelector("#TranslateToggle"),
+      getPIPWindow2()?.document.querySelector("#TranslateToggle")
+    ];
+    buttons.forEach((button) => {
+      if (button) {
+        button.classList.remove("loading", "error");
+        button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
+      }
+    });
+  }
+  function setButtonErrorState(hasError) {
+    const buttons = [
+      document.querySelector("#TranslateToggle"),
+      getPIPWindow2()?.document.querySelector("#TranslateToggle")
+    ];
+    buttons.forEach((button) => {
+      if (button)
+        button.classList.toggle("error", hasError);
+    });
   }
   function createTranslateButton() {
     const button = document.createElement("button");
     button.id = "TranslateToggle";
     button.className = "ViewControl";
     button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-    if (state.isEnabled) {
+    if (state.isEnabled)
       button.classList.add("active");
-    }
     if (typeof Spicetify !== "undefined" && Spicetify.Tippy) {
       try {
         Spicetify.Tippy(button, {
@@ -3020,7 +4076,7 @@ body.slt-overlay-active .LyricsContent {}
     button.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      showSettingsModal();
+      openSettingsModal();
       return false;
     });
     return button;
@@ -3033,7 +4089,13 @@ body.slt-overlay-active .LyricsContent {}
     }
   }
   function insertTranslateButtonIntoDocument(doc) {
-    const viewControls = doc.querySelector("#SpicyLyricsPage .ViewControls") || doc.querySelector(".ViewControls");
+    let viewControls = doc.querySelector("#SpicyLyricsPage .ContentBox .ViewControls") || doc.querySelector("#SpicyLyricsPage .ViewControls");
+    if (!viewControls && doc.body.classList.contains("SpicySidebarLyrics__Active")) {
+      viewControls = doc.querySelector(".Root__right-sidebar #SpicyLyricsPage .ViewControls");
+    }
+    if (!viewControls) {
+      viewControls = doc.querySelector(".ViewControls");
+    }
     if (!viewControls)
       return;
     if (viewControls.querySelector("#TranslateToggle"))
@@ -3051,64 +4113,9 @@ body.slt-overlay-active .LyricsContent {}
       }
     }
   }
-  function updateButtonState() {
-    const button = document.querySelector("#TranslateToggle");
-    if (button) {
-      button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-      button.classList.toggle("active", state.isEnabled);
-      const buttonWithTippy = button;
-      if (buttonWithTippy._tippy) {
-        buttonWithTippy._tippy.setContent(state.isEnabled ? "Disable Translation" : "Enable Translation");
-      }
-    }
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipButton = pipWindow.document.querySelector("#TranslateToggle");
-      if (pipButton) {
-        pipButton.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-        pipButton.classList.toggle("active", state.isEnabled);
-      }
-    }
-  }
-  function restoreButtonState() {
-    const button = document.querySelector("#TranslateToggle");
-    if (button) {
-      button.classList.remove("loading");
-      button.classList.remove("error");
-      button.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-    }
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipButton = pipWindow.document.querySelector("#TranslateToggle");
-      if (pipButton) {
-        pipButton.classList.remove("loading");
-        pipButton.classList.remove("error");
-        pipButton.innerHTML = state.isEnabled ? Icons.Translate : Icons.TranslateOff;
-      }
-    }
-  }
-  function setButtonErrorState(hasError) {
-    const button = document.querySelector("#TranslateToggle");
-    if (button) {
-      button.classList.toggle("error", hasError);
-    }
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipButton = pipWindow.document.querySelector("#TranslateToggle");
-      if (pipButton) {
-        pipButton.classList.toggle("error", hasError);
-      }
-    }
-  }
   async function handleTranslateToggle() {
-    let button = document.querySelector("#TranslateToggle");
-    const pipWindow = getPIPWindow2();
-    if (!button && pipWindow) {
-      button = pipWindow.document.querySelector("#TranslateToggle");
-    }
-    if (state.isTranslating) {
+    if (state.isTranslating)
       return;
-    }
     state.isEnabled = !state.isEnabled;
     storage.set("translation-enabled", state.isEnabled.toString());
     updateButtonState();
@@ -3118,218 +4125,127 @@ body.slt-overlay-active .LyricsContent {}
       removeTranslations();
     }
   }
-  async function waitForLyricsAndTranslate(retries = 15, delay = 600) {
+  function extractLineText2(lineElement) {
+    if (lineElement.classList.contains("musical-line"))
+      return "";
+    const words = lineElement.querySelectorAll(".word:not(.dot), .syllable, .letterGroup");
+    if (words.length > 0) {
+      return Array.from(words).map((w) => w.textContent?.trim() || "").join(" ").replace(/\s+/g, " ").trim();
+    }
+    const letters = lineElement.querySelectorAll(".letter");
+    if (letters.length > 0) {
+      return Array.from(letters).map((l) => l.textContent || "").join("").trim();
+    }
+    return lineElement.textContent?.trim() || "";
+  }
+  function getLyricsLines() {
+    const docs = [document];
+    const pip = getPIPWindow2();
+    if (pip)
+      docs.push(pip.document);
+    for (const doc of docs) {
+      const scrollContainer = doc.querySelectorAll("#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)");
+      if (scrollContainer.length > 0)
+        return scrollContainer;
+      const lyricsContent = doc.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
+      if (lyricsContent.length > 0)
+        return lyricsContent;
+      if (doc.body.classList.contains("SpicySidebarLyrics__Active")) {
+        const sidebar = doc.querySelectorAll(".Root__right-sidebar #SpicyLyricsPage .line:not(.musical-line)");
+        if (sidebar.length > 0)
+          return sidebar;
+      }
+      const generic = doc.querySelectorAll(".LyricsContent .line:not(.musical-line), .LyricsContainer .line:not(.musical-line)");
+      if (generic.length > 0)
+        return generic;
+    }
+    return document.querySelectorAll(".non-existent-selector");
+  }
+  async function waitForLyricsAndTranslate(retries = 10, delay = 500) {
     debug("Waiting for lyrics to load...");
-    let previousContentHash = "";
-    let stableCount = 0;
-    const requiredStableIterations = 3;
     for (let i = 0; i < retries; i++) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      if (!isSpicyLyricsOpen()) {
-        debug("SpicyLyrics not open, stopping retry");
+      if (!isSpicyLyricsOpen() || state.isTranslating)
         return;
-      }
-      if (state.isTranslating) {
-        debug("Already translating, stopping retry");
-        return;
-      }
-      const lines2 = getLyricsLines();
-      if (lines2.length === 0) {
-        debug(`Attempt ${i + 1}/${retries}: No lyrics found yet`);
-        previousContentHash = "";
-        stableCount = 0;
-        continue;
-      }
-      const currentContent = Array.from(lines2).slice(0, 8).map((l) => l.textContent?.trim() || "").join("|");
-      const currentHash = currentContent.substring(0, 150);
-      if (currentHash === previousContentHash && currentHash.length > 0) {
-        stableCount++;
-        debug(`Attempt ${i + 1}/${retries}: Lyrics stable (${stableCount}/${requiredStableIterations})`);
-        if (stableCount >= requiredStableIterations) {
-          debug(`Found ${lines2.length} stable lyrics lines after ${i + 1} attempts`);
+      const lines = getLyricsLines();
+      if (lines.length > 0) {
+        const firstLineText = lines[0].textContent?.trim();
+        if (firstLineText && firstLineText.length > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
           await translateCurrentLyrics();
           return;
         }
-      } else {
-        debug(`Attempt ${i + 1}/${retries}: Lyrics content changed, resetting stability counter`);
-        stableCount = 0;
       }
-      previousContentHash = currentHash;
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    debug("Gave up waiting for stable lyrics after", retries, "attempts");
-    const lines = getLyricsLines();
-    if (lines.length > 0 && !state.isTranslating) {
-      debug("Attempting translation with current lyrics anyway");
-      await translateCurrentLyrics();
-    }
-  }
-  function getLyricsLines() {
-    let lines = document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-    if (lines.length === 0) {
-      lines = document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
-    }
-    if (lines.length === 0) {
-      lines = document.querySelectorAll(".LyricsContainer .line:not(.musical-line)");
-    }
-    if (lines.length > 0) {
-      debug(`Found ${lines.length} lyrics lines in main document`);
-      return lines;
-    }
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      lines = pipWindow.document.querySelectorAll("#SpicyLyricsPage .LyricsContent .line:not(.musical-line)");
-      if (lines.length === 0) {
-        lines = pipWindow.document.querySelectorAll(".LyricsContent .line:not(.musical-line)");
-      }
-      if (lines.length === 0) {
-        lines = pipWindow.document.querySelectorAll(".LyricsContainer .line:not(.musical-line)");
-      }
-      if (lines.length > 0) {
-        debug(`Found ${lines.length} lyrics lines in PIP`);
-        return lines;
-      }
-    }
-    debug("No lyrics lines found");
-    return lines;
-  }
-  function extractLineText2(lineElement) {
-    if (lineElement.classList.contains("musical-line")) {
-      return "";
-    }
-    const letterGroups = lineElement.querySelectorAll(".letterGroup");
-    if (letterGroups.length > 0) {
-      const parts = [];
-      const children = lineElement.children;
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        if (child.classList.contains("letterGroup")) {
-          const letters = child.querySelectorAll(".letter");
-          const word = Array.from(letters).map((letter) => letter.textContent || "").join("");
-          if (word)
-            parts.push(word);
-        } else if (child.classList.contains("word") && !child.classList.contains("dot")) {
-          const text2 = child.textContent?.trim();
-          if (text2 && text2 !== "\u2022")
-            parts.push(text2);
-        } else if (child.classList.contains("word-group")) {
-          const text2 = child.textContent?.trim();
-          if (text2 && text2 !== "\u2022")
-            parts.push(text2);
-        }
-      }
-      if (parts.length > 0) {
-        return parts.join(" ").trim();
-      }
-    }
-    const wordElements = lineElement.querySelectorAll(".word:not(.dot)");
-    if (wordElements.length > 0) {
-      const text2 = Array.from(wordElements).map((word) => word.textContent?.trim() || "").filter((t) => t.length > 0 && t !== "\u2022").join(" ").trim();
-      if (text2)
-        return text2;
-    }
-    const syllableElements = lineElement.querySelectorAll(".syllable");
-    if (syllableElements.length > 0) {
-      const text2 = Array.from(syllableElements).map((syl) => syl.textContent?.trim() || "").filter((t) => t.length > 0).join("").trim();
-      if (text2)
-        return text2;
-    }
-    const text = lineElement.textContent?.trim() || "";
-    if (/^[•\s]+$/.test(text)) {
-      return "";
-    }
-    return text;
   }
   async function translateCurrentLyrics() {
-    if (state.isTranslating) {
-      debug("Already translating, skipping");
+    if (state.isTranslating)
+      return;
+    const currentTrackUri = getCurrentTrackUri();
+    if (currentTrackUri && currentTrackUri === state.lastTranslatedSongUri && state.translatedLyrics.size > 0) {
+      debug("Already translated this track, skipping");
       return;
     }
     if (isOffline()) {
       const cacheStats = getCacheStats();
-      if (cacheStats.entries > 0) {
-        debug("Offline - will use cached translations only");
-        if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
-          Spicetify.showNotification("Offline - using cached translations");
-        }
-      } else {
-        debug("Offline with no cache available");
-        if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
+      if (cacheStats.entries === 0) {
+        if (state.showNotifications && Spicetify.showNotification) {
           Spicetify.showNotification("Offline - translations unavailable", true);
         }
         return;
       }
     }
     let lines = getLyricsLines();
-    if (lines.length === 0) {
-      debug("No lyrics lines found, waiting...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      lines = getLyricsLines();
-      if (lines.length === 0) {
-        debug("Still no lyrics lines found");
-        return;
-      }
-    }
+    if (lines.length === 0)
+      return;
     state.isTranslating = true;
-    const button = document.querySelector("#TranslateToggle");
-    if (button) {
-      button.classList.add("loading");
-      button.innerHTML = Icons.Loading;
-    }
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      const pipButton = pipWindow.document.querySelector("#TranslateToggle");
-      if (pipButton) {
-        pipButton.classList.add("loading");
-        pipButton.innerHTML = Icons.Loading;
+    const buttons = [
+      document.querySelector("#TranslateToggle"),
+      getPIPWindow2()?.document.querySelector("#TranslateToggle")
+    ];
+    buttons.forEach((b) => {
+      if (b) {
+        b.classList.add("loading");
+        b.innerHTML = Icons.Loading;
       }
-    }
+    });
     try {
       const lineTexts = [];
-      lines.forEach((line) => {
-        const text = extractLineText2(line);
-        lineTexts.push(text);
-      });
-      debug("Extracted lyrics:", lineTexts.slice(0, 3), "...");
+      lines.forEach((line) => lineTexts.push(extractLineText2(line)));
       const nonEmptyTexts = lineTexts.filter((t) => t.trim().length > 0);
       if (nonEmptyTexts.length === 0) {
-        debug("No non-empty lyrics found");
         state.isTranslating = false;
         restoreButtonState();
         return;
       }
-      const currentTrackUri = getCurrentTrackUri();
-      const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri || void 0);
-      if (skipCheck.detectedLanguage) {
+      const currentTrackUri2 = getCurrentTrackUri();
+      const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri2 || void 0);
+      if (skipCheck.detectedLanguage)
         state.detectedLanguage = skipCheck.detectedLanguage;
-      }
       if (skipCheck.skip) {
-        debug(`Skipping translation: ${skipCheck.reason}`);
         state.isTranslating = false;
+        state.lastTranslatedSongUri = currentTrackUri2;
         restoreButtonState();
-        if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
+        if (state.showNotifications && Spicetify.showNotification) {
           Spicetify.showNotification(skipCheck.reason || "Lyrics already in target language");
         }
         return;
       }
-      debug("Translating", nonEmptyTexts.length, "lines for track:", currentTrackUri);
-      const translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri || void 0, state.detectedLanguage || void 0);
-      debug("Translation complete, got", translations.length, "results");
-      const wasActuallyTranslated = translations.some((t) => t.wasTranslated === true);
+      const translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri2 || void 0, state.detectedLanguage || void 0);
       state.translatedLyrics.clear();
       translations.forEach((result, index) => {
         state.translatedLyrics.set(lineTexts[index], result.translatedText);
       });
+      state.lastTranslatedSongUri = currentTrackUri2;
       applyTranslations(lines);
-      if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
-        if (wasActuallyTranslated) {
+      if (state.showNotifications && Spicetify.showNotification) {
+        const wasActuallyTranslated = translations.some((t) => t.wasTranslated === true);
+        if (wasActuallyTranslated)
           Spicetify.showNotification("Lyrics translated successfully!");
-        } else {
-          Spicetify.showNotification("Lyrics are already in the target language");
-        }
       }
     } catch (err) {
       error("Translation failed:", err);
-      if (state.showNotifications && typeof Spicetify !== "undefined" && Spicetify.showNotification) {
+      if (state.showNotifications && Spicetify.showNotification) {
         Spicetify.showNotification("Translation failed. Please try again.", true);
       }
       setButtonErrorState(true);
@@ -3353,7 +4269,6 @@ body.slt-overlay-active .LyricsContent {}
         enableOverlay({ mode: state.overlayMode });
       }
       updateOverlayContent(translationMapByIndex);
-      correctLyricsScroll();
       return;
     }
     lines.forEach((line, index) => {
@@ -3361,32 +4276,21 @@ body.slt-overlay-active .LyricsContent {}
       const translatedText = state.translatedLyrics.get(originalText);
       if (translatedText && translatedText !== originalText) {
         const existingTranslation = line.querySelector(".spicy-translation-container");
-        if (existingTranslation) {
+        if (existingTranslation)
           existingTranslation.remove();
-        }
         restoreLineText(line);
         line.dataset.originalText = originalText;
         line.dataset.lineIndex = index.toString();
         line.classList.add("spicy-translated");
-        const letterGroups = line.querySelectorAll(".letterGroup");
-        const otherElements = line.querySelectorAll(".word:not(.letterGroup .word), .syllable:not(.letterGroup .syllable), .word-group:not(.letterGroup .word-group)");
-        if (letterGroups.length > 0 || otherElements.length > 0) {
-          letterGroups.forEach((el) => {
-            el.classList.add("spicy-hidden-original");
-          });
-          otherElements.forEach((el) => {
-            el.classList.add("spicy-hidden-original");
-          });
+        const contentNodes = line.querySelectorAll(".word, .syllable, .letterGroup");
+        if (contentNodes.length > 0) {
+          contentNodes.forEach((el) => el.classList.add("spicy-hidden-original"));
         } else {
-          const existingWrapper = line.querySelector(".spicy-original-wrapper");
-          if (!existingWrapper) {
-            const originalContent = line.innerHTML;
-            const wrapper = document.createElement("span");
-            wrapper.className = "spicy-original-wrapper spicy-hidden-original";
-            wrapper.innerHTML = originalContent;
-            line.innerHTML = "";
-            line.appendChild(wrapper);
-          }
+          const wrapper = document.createElement("span");
+          wrapper.className = "spicy-original-wrapper spicy-hidden-original";
+          wrapper.innerHTML = line.innerHTML;
+          line.innerHTML = "";
+          line.appendChild(wrapper);
         }
         const translationSpan = document.createElement("span");
         translationSpan.className = "spicy-translation-container spicy-translation-text";
@@ -3394,411 +4298,43 @@ body.slt-overlay-active .LyricsContent {}
         line.appendChild(translationSpan);
       }
     });
-    correctLyricsScroll();
-  }
-  function correctLyricsScroll() {
-    requestAnimationFrame(() => {
-      const activeLine = document.querySelector(".LyricsContent .line.active, .LyricsContent .line.current") || document.querySelector(".LyricsContainer .line.active, .LyricsContainer .line.current");
-      if (activeLine) {
-        activeLine.scrollIntoView({ behavior: "auto", block: "center" });
-      }
-      const pipWindow = getPIPWindow2();
-      if (pipWindow) {
-        const pipActiveLine = pipWindow.document.querySelector(".LyricsContent .line.active, .LyricsContent .line.current") || pipWindow.document.querySelector(".LyricsContainer .line.active, .LyricsContainer .line.current");
-        if (pipActiveLine) {
-          pipActiveLine.scrollIntoView({ behavior: "auto", block: "center" });
-        }
-      }
-    });
   }
   function restoreLineText(line) {
     const hiddenElements = line.querySelectorAll(".spicy-hidden-original");
-    hiddenElements.forEach((el) => {
-      el.classList.remove("spicy-hidden-original");
-    });
+    hiddenElements.forEach((el) => el.classList.remove("spicy-hidden-original"));
     const translationTexts = line.querySelectorAll(".spicy-translation-container");
     translationTexts.forEach((el) => el.remove());
     const wrapper = line.querySelector(".spicy-original-wrapper");
     if (wrapper) {
       const originalContent = wrapper.innerHTML;
       wrapper.remove();
-      if (line.innerHTML.trim() === "" || !line.querySelector(".word, .syllable, .letterGroup, .letter")) {
+      if (line.innerHTML.trim() === "")
         line.innerHTML = originalContent;
-      }
     }
-    const wordElements = line.querySelectorAll(".word[data-original-word]");
-    wordElements.forEach((wordEl) => {
-      const el = wordEl;
-      if (el.dataset.originalWord !== void 0) {
-        el.textContent = el.dataset.originalWord;
-        delete el.dataset.originalWord;
-      }
-    });
   }
   function removeTranslations() {
-    if (isOverlayActive()) {
+    if (isOverlayActive())
       disableOverlay();
-    }
-    const documents = [document];
-    const pipWindow = getPIPWindow2();
-    if (pipWindow) {
-      documents.push(pipWindow.document);
-    }
-    documents.forEach((doc) => {
-      const translations = doc.querySelectorAll(".spicy-translation-container");
-      translations.forEach((el) => el.remove());
+    const docs = [document];
+    const pip = getPIPWindow2();
+    if (pip)
+      docs.push(pip.document);
+    docs.forEach((doc) => {
+      doc.querySelectorAll(".spicy-translation-container").forEach((el) => el.remove());
       doc.querySelectorAll(".slt-interleaved-translation").forEach((el) => el.remove());
-      const hiddenElements = doc.querySelectorAll(".spicy-hidden-original");
-      hiddenElements.forEach((el) => {
-        el.classList.remove("spicy-hidden-original");
-      });
-      const wrappers = doc.querySelectorAll(".spicy-original-wrapper");
-      wrappers.forEach((wrapper) => {
+      doc.querySelectorAll(".spicy-hidden-original").forEach((el) => el.classList.remove("spicy-hidden-original"));
+      doc.querySelectorAll(".spicy-translated").forEach((el) => el.classList.remove("spicy-translated"));
+      doc.querySelectorAll(".spicy-original-wrapper").forEach((wrapper) => {
         const parent = wrapper.parentElement;
         if (parent) {
           const originalContent = wrapper.innerHTML;
           wrapper.remove();
-          if (parent.innerHTML.trim() === "" || !parent.querySelector(".word, .syllable, .letterGroup, .letter")) {
+          if (parent.innerHTML.trim() === "")
             parent.innerHTML = originalContent;
-          }
-        }
-      });
-      const translatedLines = doc.querySelectorAll(".spicy-translated, .slt-overlay-parent");
-      translatedLines.forEach((line) => {
-        line.classList.remove("spicy-translated", "slt-overlay-parent");
-      });
-      const wordElements = doc.querySelectorAll(".word[data-original-word]");
-      wordElements.forEach((wordEl) => {
-        const el = wordEl;
-        if (el.dataset.originalWord !== void 0) {
-          el.textContent = el.dataset.originalWord;
-          delete el.dataset.originalWord;
         }
       });
     });
     state.translatedLyrics.clear();
-  }
-  function showSettingsModal() {
-    if (typeof Spicetify === "undefined" || !Spicetify.PopupModal) {
-      alert("Settings not available - Spicetify PopupModal not found");
-      return;
-    }
-    const languageOptions = SUPPORTED_LANGUAGES.map((lang) => `<option value="${lang.code}" ${lang.code === state.targetLanguage ? "selected" : ""}>${lang.name}</option>`).join("");
-    const apiOptions = `
-        <option value="google" ${state.preferredApi === "google" ? "selected" : ""}>Google Translate</option>
-        <option value="libretranslate" ${state.preferredApi === "libretranslate" ? "selected" : ""}>LibreTranslate</option>
-        <option value="custom" ${state.preferredApi === "custom" ? "selected" : ""}>Custom API</option>
-    `;
-    const overlayModeOptions = `
-        <option value="replace" ${state.overlayMode === "replace" ? "selected" : ""}>Replace (default)</option>
-        <option value="interleaved" ${state.overlayMode === "interleaved" ? "selected" : ""}>Below each line</option>
-    `;
-    const content = document.createElement("div");
-    content.className = "spicy-translate-settings";
-    content.innerHTML = `
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Target Language</div>
-                <div class="setting-description">Select the language to translate lyrics to</div>
-            </div>
-            <select id="spicy-translate-lang-select">
-                ${languageOptions}
-            </select>
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Translation Display</div>
-                <div class="setting-description">How to show translated lyrics</div>
-            </div>
-            <select id="spicy-translate-overlay-mode">
-                ${overlayModeOptions}
-            </select>
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Preferred API</div>
-                <div class="setting-description">Select the translation service to use</div>
-            </div>
-            <select id="spicy-translate-api-select">
-                ${apiOptions}
-            </select>
-        </div>
-        <div class="setting-item" id="spicy-translate-custom-api-container" style="display: ${state.preferredApi === "custom" ? "flex" : "none"}">
-            <div>
-                <div class="setting-label">Custom API URL</div>
-                <div class="setting-description">Enter your custom translation API endpoint</div>
-            </div>
-            <input type="text" id="spicy-translate-custom-api-url" placeholder="https://your-api.com/translate" value="${state.customApiUrl}" />
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Auto-Translate</div>
-                <div class="setting-description">Automatically translate lyrics when they load</div>
-            </div>
-            <div class="toggle-switch ${state.autoTranslate ? "active" : ""}" id="spicy-translate-auto"></div>
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Show Notifications</div>
-                <div class="setting-description">Show notifications for translation status</div>
-            </div>
-            <div class="toggle-switch ${state.showNotifications ? "active" : ""}" id="spicy-translate-notifications"></div>
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Translation Cache</div>
-                <div class="setting-description">${getCacheStats().trackCount || 0} tracks cached (${formatBytes(getCacheStats().sizeBytes)})</div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button id="spicy-translate-view-cache">View Cache</button>
-                <button id="spicy-translate-clear-cache">Clear All</button>
-            </div>
-        </div>
-        <div class="setting-item">
-            <div>
-                <div class="setting-label">Version</div>
-                <div class="setting-description">v${VERSION} \u2022 <a href="${REPO_URL}" target="_blank" style="color: var(--spice-button-active);">View on GitHub</a></div>
-            </div>
-            <button id="spicy-translate-check-updates">Check for Updates</button>
-        </div>
-        <div class="setting-item" style="border-bottom: none; opacity: 0.7; font-size: 12px;">
-            <div>
-                <div class="setting-description">Keyboard shortcut: Alt+T to toggle translation</div>
-            </div>
-        </div>
-    `;
-    setTimeout(() => {
-      const langSelect = document.getElementById("spicy-translate-lang-select");
-      const overlayModeSelect = document.getElementById("spicy-translate-overlay-mode");
-      const apiSelect = document.getElementById("spicy-translate-api-select");
-      const customApiContainer = document.getElementById("spicy-translate-custom-api-container");
-      const customApiUrlInput = document.getElementById("spicy-translate-custom-api-url");
-      const autoToggle = document.getElementById("spicy-translate-auto");
-      const notificationsToggle = document.getElementById("spicy-translate-notifications");
-      const viewCacheBtn = document.getElementById("spicy-translate-view-cache");
-      const clearCacheBtn = document.getElementById("spicy-translate-clear-cache");
-      if (langSelect) {
-        langSelect.addEventListener("change", () => {
-          state.targetLanguage = langSelect.value;
-          storage.set("target-language", state.targetLanguage);
-          if (state.isEnabled) {
-            state.translatedLyrics.clear();
-            removeTranslations();
-            translateCurrentLyrics();
-          }
-        });
-      }
-      if (overlayModeSelect) {
-        overlayModeSelect.addEventListener("change", () => {
-          state.overlayMode = overlayModeSelect.value;
-          storage.set("overlay-mode", state.overlayMode);
-          setOverlayConfig({ mode: state.overlayMode });
-          if (state.isEnabled) {
-            state.translatedLyrics.clear();
-            removeTranslations();
-            translateCurrentLyrics();
-          }
-        });
-      }
-      if (apiSelect) {
-        apiSelect.addEventListener("change", () => {
-          state.preferredApi = apiSelect.value;
-          storage.set("preferred-api", state.preferredApi);
-          setPreferredApi(state.preferredApi, state.customApiUrl);
-          if (customApiContainer) {
-            customApiContainer.style.display = state.preferredApi === "custom" ? "flex" : "none";
-          }
-        });
-      }
-      if (customApiUrlInput) {
-        customApiUrlInput.addEventListener("change", () => {
-          state.customApiUrl = customApiUrlInput.value;
-          storage.set("custom-api-url", state.customApiUrl);
-          setPreferredApi(state.preferredApi, state.customApiUrl);
-        });
-      }
-      if (autoToggle) {
-        autoToggle.addEventListener("click", () => {
-          state.autoTranslate = !state.autoTranslate;
-          storage.set("auto-translate", state.autoTranslate.toString());
-          autoToggle.classList.toggle("active", state.autoTranslate);
-        });
-      }
-      if (notificationsToggle) {
-        notificationsToggle.addEventListener("click", () => {
-          state.showNotifications = !state.showNotifications;
-          storage.set("show-notifications", state.showNotifications.toString());
-          notificationsToggle.classList.toggle("active", state.showNotifications);
-        });
-      }
-      if (viewCacheBtn) {
-        viewCacheBtn.addEventListener("click", () => {
-          Spicetify.PopupModal.hide();
-          setTimeout(() => showCacheViewerModal(), 150);
-        });
-      }
-      if (clearCacheBtn) {
-        clearCacheBtn.addEventListener("click", () => {
-          clearTranslationCache();
-          if (state.showNotifications && Spicetify.showNotification) {
-            Spicetify.showNotification("Translation cache cleared!");
-          }
-          Spicetify.PopupModal.hide();
-          setTimeout(() => showSettingsModal(), 100);
-        });
-      }
-      const checkUpdatesBtn = document.getElementById("spicy-translate-check-updates");
-      if (checkUpdatesBtn) {
-        checkUpdatesBtn.addEventListener("click", async () => {
-          checkUpdatesBtn.textContent = "Checking...";
-          checkUpdatesBtn.setAttribute("disabled", "true");
-          try {
-            const info2 = await getUpdateInfo();
-            if (info2?.hasUpdate) {
-              Spicetify.PopupModal.hide();
-              setTimeout(() => checkForUpdates(true), 150);
-            } else {
-              if (Spicetify.showNotification) {
-                Spicetify.showNotification("You're on the latest version!");
-              }
-              checkUpdatesBtn.textContent = "Check for Updates";
-              checkUpdatesBtn.removeAttribute("disabled");
-            }
-          } catch (error2) {
-            checkUpdatesBtn.textContent = "Check for Updates";
-            checkUpdatesBtn.removeAttribute("disabled");
-            if (Spicetify.showNotification) {
-              Spicetify.showNotification("Failed to check for updates", true);
-            }
-          }
-        });
-      }
-    }, 100);
-    Spicetify.PopupModal.display({
-      title: "Spicy Lyric Translater Settings",
-      content,
-      isLarge: false
-    });
-  }
-  function showCacheViewerModal() {
-    if (typeof Spicetify === "undefined" || !Spicetify.PopupModal) {
-      return;
-    }
-    const cachedItems = getCachedTranslations();
-    const stats = getCacheStats();
-    const content = document.createElement("div");
-    content.className = "spicy-translate-settings";
-    if (cachedItems.length === 0) {
-      content.innerHTML = `
-            <div style="text-align: center; padding: 20px; opacity: 0.7;">
-                <p>No cached translations yet.</p>
-                <p style="font-size: 12px;">Translations will be cached here as you use the extension.</p>
-            </div>
-            <div class="setting-item" style="border-bottom: none;">
-                <button id="spicy-cache-back">Back to Settings</button>
-            </div>
-        `;
-    } else {
-      const itemsHtml = cachedItems.slice(0, 50).map((item, index) => `
-            <div class="cache-item" data-index="${index}" style="padding: 8px 0; border-bottom: 1px solid var(--spice-misc, #535353);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">${item.language.toUpperCase()} \u2022 ${item.api ? item.api.toUpperCase() + " \u2022 " : ""}${item.date.toLocaleDateString()}</div>
-                        <div style="font-size: 13px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.original}">${truncateText(item.original, 40)}</div>
-                        <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.translated}">${truncateText(item.translated, 40)}</div>
-                    </div>
-                    <button class="cache-delete-btn" data-original="${encodeURIComponent(item.original)}" data-lang="${item.language}" style="padding: 4px 8px; font-size: 12px; flex-shrink: 0;">\u2715</button>
-                </div>
-            </div>
-        `).join("");
-      content.innerHTML = `
-            <div style="margin-bottom: 12px; opacity: 0.7; font-size: 12px;">
-                Showing ${Math.min(cachedItems.length, 50)} of ${stats.entries} cached translations (${formatBytes(stats.sizeBytes)})
-            </div>
-            <div id="spicy-cache-list" style="max-height: 300px; overflow-y: auto;">
-                ${itemsHtml}
-            </div>
-            <div class="setting-item" style="border-bottom: none; margin-top: 12px; display: flex; gap: 8px;">
-                <button id="spicy-cache-back">Back to Settings</button>
-                <button id="spicy-cache-clear-all" style="background: #e74c3c;">Clear All</button>
-            </div>
-        `;
-    }
-    setTimeout(() => {
-      const backBtn = document.getElementById("spicy-cache-back");
-      const clearAllBtn = document.getElementById("spicy-cache-clear-all");
-      const deleteButtons = document.querySelectorAll(".cache-delete-btn");
-      if (backBtn) {
-        backBtn.addEventListener("click", () => {
-          Spicetify.PopupModal.hide();
-          setTimeout(() => showSettingsModal(), 100);
-        });
-      }
-      if (clearAllBtn) {
-        clearAllBtn.addEventListener("click", () => {
-          clearTranslationCache();
-          if (state.showNotifications && Spicetify.showNotification) {
-            Spicetify.showNotification("Translation cache cleared!");
-          }
-          Spicetify.PopupModal.hide();
-          setTimeout(() => showSettingsModal(), 100);
-        });
-      }
-      deleteButtons.forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          const button = e.target;
-          const original = decodeURIComponent(button.dataset.original || "");
-          const lang = button.dataset.lang || "";
-          if (deleteCachedTranslation(original, lang)) {
-            const cacheItem = button.closest(".cache-item");
-            if (cacheItem) {
-              cacheItem.remove();
-            }
-            const newStats = getCacheStats();
-            const countDisplay = content.querySelector('div[style*="margin-bottom: 12px"]');
-            if (countDisplay) {
-              const remaining = getCachedTranslations().length;
-              countDisplay.textContent = `Showing ${Math.min(remaining, 50)} of ${newStats.entries} cached translations (${formatBytes(newStats.sizeBytes)})`;
-            }
-          }
-        });
-      });
-    }, 100);
-    Spicetify.PopupModal.display({
-      title: "Translation Cache",
-      content,
-      isLarge: true
-    });
-  }
-  function setupViewControlsObserver() {
-    if (viewControlsObserver) {
-      viewControlsObserver.disconnect();
-      viewControlsObserver = null;
-    }
-    const viewControls = getViewControls();
-    if (!viewControls) {
-      debug("ViewControls not found, skipping observer setup");
-      return;
-    }
-    try {
-      viewControlsObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          if (mutation.type === "childList") {
-            const vc = getViewControls();
-            if (vc && !vc.querySelector("#TranslateToggle")) {
-              insertTranslateButton();
-            }
-          }
-        }
-      });
-      viewControlsObserver.observe(viewControls, {
-        childList: true,
-        subtree: true
-      });
-      debug("ViewControls observer attached");
-    } catch (e) {
-      warn("Failed to setup ViewControls observer:", e);
-    }
   }
   function setupLyricsObserver() {
     if (lyricsObserver) {
@@ -3806,10 +4342,8 @@ body.slt-overlay-active .LyricsContent {}
       lyricsObserver = null;
     }
     const lyricsContent = getLyricsContent();
-    if (!lyricsContent) {
-      debug("LyricsContent not found, skipping observer setup");
+    if (!lyricsContent)
       return;
-    }
     try {
       lyricsObserver = new MutationObserver((mutations) => {
         if (!state.isEnabled || state.isTranslating)
@@ -3820,9 +4354,8 @@ body.slt-overlay-active .LyricsContent {}
           )
         );
         if (hasNewContent && state.autoTranslate && !state.isTranslating) {
-          if (translateDebounceTimer) {
+          if (translateDebounceTimer)
             clearTimeout(translateDebounceTimer);
-          }
           translateDebounceTimer = setTimeout(() => {
             translateDebounceTimer = null;
             if (!state.isTranslating) {
@@ -3840,61 +4373,36 @@ body.slt-overlay-active .LyricsContent {}
         childList: true,
         subtree: true
       });
-      debug("Lyrics observer attached");
     } catch (e) {
       warn("Failed to setup Lyrics observer:", e);
     }
   }
   async function onSpicyLyricsOpen() {
-    info("Lyrics view detected, initializing...");
     setViewingLyrics(true);
     let viewControls = await waitForElement2("#SpicyLyricsPage .ViewControls", 3e3);
-    if (!viewControls) {
-      viewControls = await waitForElement2(".spicy-pip-wrapper .ViewControls", 3e3);
+    if (!viewControls && document.body.classList.contains("SpicySidebarLyrics__Active")) {
+      viewControls = await waitForElement2(".Root__right-sidebar #SpicyLyricsPage .ViewControls", 2e3);
     }
-    if (!viewControls) {
-      viewControls = await waitForElement2(".Cinema--Container .ViewControls", 3e3);
-    }
-    if (!viewControls) {
-      viewControls = await waitForElement2(".ViewControls", 3e3);
-    }
-    if (!viewControls) {
-      const pipWindow = getPIPWindow2();
-      if (pipWindow) {
-        viewControls = pipWindow.document.querySelector("#SpicyLyricsPage .ViewControls");
-      }
-    }
-    if (viewControls) {
-      debug("ViewControls found, inserting button");
+    if (!viewControls)
+      viewControls = await waitForElement2(".ViewControls", 2e3);
+    if (viewControls)
       insertTranslateButton();
-      injectStylesIntoPIP();
-      setupViewControlsObserver();
-    } else {
-      debug("ViewControls not found, will retry...");
-    }
     setupLyricsObserver();
-    if (state.autoTranslate) {
-      if (!state.isEnabled) {
-        state.isEnabled = true;
-        storage.set("translation-enabled", "true");
-        updateButtonState();
-      }
-      waitForLyricsAndTranslate(20, 600);
-    }
-  }
-  function injectStylesIntoPIP() {
     const pipWindow = getPIPWindow2();
-    if (!pipWindow)
-      return;
-    if (pipWindow.document.getElementById("spicy-lyric-translater-styles"))
-      return;
-    const mainStyles = document.getElementById("spicy-lyric-translater-styles");
-    if (mainStyles) {
-      const pipStyles = pipWindow.document.createElement("style");
-      pipStyles.id = "spicy-lyric-translater-styles";
-      pipStyles.textContent = mainStyles.textContent;
-      pipWindow.document.head.appendChild(pipStyles);
-      debug("Injected styles into PIP window");
+    if (pipWindow) {
+      setTimeout(() => {
+        insertTranslateButtonIntoDocument(pipWindow.document);
+      }, 500);
+    }
+    if (state.isEnabled) {
+      updateButtonState();
+      state.lastTranslatedSongUri = null;
+      waitForLyricsAndTranslate(20, 600);
+    } else if (state.autoTranslate) {
+      state.isEnabled = true;
+      storage.set("translation-enabled", "true");
+      updateButtonState();
+      waitForLyricsAndTranslate(20, 600);
     }
   }
   function onSpicyLyricsClose() {
@@ -3903,419 +4411,66 @@ body.slt-overlay-active .LyricsContent {}
       clearTimeout(translateDebounceTimer);
       translateDebounceTimer = null;
     }
-    if (state.translationAbortController) {
-      state.translationAbortController.abort();
-      state.translationAbortController = null;
-    }
     state.isTranslating = false;
-    if (viewControlsObserver) {
-      viewControlsObserver.disconnect();
-      viewControlsObserver = null;
-    }
     if (lyricsObserver) {
       lyricsObserver.disconnect();
       lyricsObserver = null;
     }
   }
-  async function registerSettingsMenu() {
-    while (!Spicetify.React || !Spicetify.ReactDOM) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    try {
-      const { SettingsSection } = await import("spcr-settings");
-      if (SettingsSection) {
-        const settings = new SettingsSection("Spicy Lyric Translater", "spicy-lyric-translater-settings");
-        const languageNames = SUPPORTED_LANGUAGES.map((l) => l.name);
-        const currentLangIndex = SUPPORTED_LANGUAGES.findIndex(
-          (l) => l.code === state.targetLanguage
-        );
-        settings.addDropDown(
-          "target-language",
-          "Target Language",
-          languageNames,
-          currentLangIndex >= 0 ? currentLangIndex : 0,
-          () => {
-            const selectedIndex = settings.getFieldValue("target-language");
-            const lang = SUPPORTED_LANGUAGES[selectedIndex];
-            if (lang) {
-              state.targetLanguage = lang.code;
-              storage.set("target-language", lang.code);
-            }
-          }
-        );
-        settings.addToggle(
-          "auto-translate",
-          "Auto-Translate on Song Change",
-          state.autoTranslate,
-          () => {
-            state.autoTranslate = settings.getFieldValue("auto-translate") === "true";
-            storage.set("auto-translate", state.autoTranslate.toString());
-          }
-        );
-        settings.addButton(
-          "clear-cache",
-          "Clear Translation Cache",
-          "Clear Cache",
-          () => {
-            clearTranslationCache();
-            Spicetify.showNotification("Translation cache cleared!");
-          }
-        );
-        settings.pushSettings();
-        debug("Settings registered in Spicetify settings menu");
-      }
-    } catch (e) {
-      debug("spcr-settings not available, using built-in settings modal");
-    }
-  }
-  function injectSettingsIntoSpotifySettings() {
-    const existingSection = document.getElementById("slt-settings-section");
-    if (existingSection)
-      return;
-    const spicyLyricsSettings = document.getElementById("spicy-lyrics-settings") || document.getElementById("spicy-lyrics-dev-settings");
-    const settingsContainer = document.querySelector(".x-settings-container");
-    if (!settingsContainer)
-      return;
-    const targetElement = spicyLyricsSettings || settingsContainer.lastElementChild;
-    if (!targetElement)
-      return;
-    const stats = getCacheStats();
-    const section = document.createElement("div");
-    section.id = "slt-settings-section";
-    section.innerHTML = `
-        <div class="x-settings-section">
-            <h2 class="e-91000-text encore-text-body-medium-bold encore-internal-color-text-base" data-encore-id="text">Spicy Lyric Translater</h2>
-            <div class="x-settings-row">
-                <div class="x-settings-firstColumn">
-                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Target Language</label>
-                </div>
-                <div class="x-settings-secondColumn">
-                    <select class="main-dropDown-dropDown" id="slt-settings-language">
-                        ${SUPPORTED_LANGUAGES.map(
-      (l) => `<option value="${l.code}" ${l.code === state.targetLanguage ? "selected" : ""}>${l.name}</option>`
-    ).join("")}
-                    </select>
-                </div>
-            </div>
-            <div class="x-settings-row">
-                <div class="x-settings-firstColumn">
-                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Auto-Translate</label>
-                </div>
-                <div class="x-settings-secondColumn">
-                    <label class="x-toggle-wrapper">
-                        <input id="slt-settings-autotranslate" class="x-toggle-input" type="checkbox" ${state.autoTranslate ? "checked" : ""}>
-                        <span class="x-toggle-indicatorWrapper"><span class="x-toggle-indicator"></span></span>
-                    </label>
-                </div>
-            </div>
-            <div class="x-settings-row">
-                <div class="x-settings-firstColumn">
-                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Show Notifications</label>
-                </div>
-                <div class="x-settings-secondColumn">
-                    <label class="x-toggle-wrapper">
-                        <input id="slt-settings-notifications" class="x-toggle-input" type="checkbox" ${state.showNotifications ? "checked" : ""}>
-                        <span class="x-toggle-indicatorWrapper"><span class="x-toggle-indicator"></span></span>
-                    </label>
-                </div>
-            </div>
-            <div class="x-settings-row">
-                <div class="x-settings-firstColumn">
-                    <div>
-                        <label class="e-91000-text encore-text-body-small encore-internal-color-text-base" data-encore-id="text">Translation Cache</label>
-                        <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text" id="slt-cache-stats"> ${stats.trackCount} tracks cached (${formatBytes(stats.sizeBytes)})</label>
-                    </div>
-                </div>
-                <div class="x-settings-secondColumn">
-                    <button id="slt-settings-clear-cache" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small">Clear Cache</button>
-                </div>
-            </div>
-            <div class="x-settings-row">
-                <div class="x-settings-firstColumn">
-                    <label class="e-91000-text encore-text-body-small encore-internal-color-text-subdued" data-encore-id="text">Version v${VERSION}</label>
-                </div>
-                <div class="x-settings-secondColumn">
-                    <button id="slt-settings-open-modal" class="Button-sc-y0gtbx-0 Button-buttonSecondary-small-useBrowserDefaultFocusStyle encore-text-body-small-bold e-91000-button--small">Open Settings</button>
-                </div>
-            </div>
-        </div>
-    `;
-    if (spicyLyricsSettings) {
-      spicyLyricsSettings.parentNode?.insertBefore(section, spicyLyricsSettings.nextSibling);
-    } else {
-      settingsContainer.appendChild(section);
-    }
-    const langSelect = document.getElementById("slt-settings-language");
-    langSelect?.addEventListener("change", () => {
-      state.targetLanguage = langSelect.value;
-      storage.set("target-language", langSelect.value);
-      if (typeof Spicetify !== "undefined" && Spicetify.showNotification) {
-        Spicetify.showNotification(`Language set to ${SUPPORTED_LANGUAGES.find((l) => l.code === langSelect.value)?.name}`);
-      }
-    });
-    const autoTranslateToggle = document.getElementById("slt-settings-autotranslate");
-    autoTranslateToggle?.addEventListener("change", () => {
-      state.autoTranslate = autoTranslateToggle.checked;
-      storage.set("auto-translate", state.autoTranslate.toString());
-    });
-    const notificationsToggle = document.getElementById("slt-settings-notifications");
-    notificationsToggle?.addEventListener("change", () => {
-      state.showNotifications = notificationsToggle.checked;
-      storage.set("show-notifications", state.showNotifications.toString());
-    });
-    const clearCacheBtn = document.getElementById("slt-settings-clear-cache");
-    clearCacheBtn?.addEventListener("click", () => {
-      clearTranslationCache();
-      const statsLabel = document.getElementById("slt-cache-stats");
-      if (statsLabel) {
-        statsLabel.textContent = " 0 tracks cached (0 B)";
-      }
-      if (typeof Spicetify !== "undefined" && Spicetify.showNotification) {
-        Spicetify.showNotification("Translation cache cleared!");
-      }
-    });
-    const openModalBtn = document.getElementById("slt-settings-open-modal");
-    openModalBtn?.addEventListener("click", () => {
-      showSettingsModal();
-    });
-    debug("Injected settings into Spotify settings page");
-  }
-  var settingsPageObserver = null;
-  function setupSettingsPageObserver() {
-    if (settingsPageObserver) {
-      settingsPageObserver.disconnect();
-      settingsPageObserver = null;
-    }
-    if (document.querySelector(".x-settings-container")) {
-      injectSettingsIntoSpotifySettings();
-      return;
-    }
-    const mainView = document.querySelector(".Root__main-view") || document.querySelector('[data-testid="main-view-container"]');
-    const observerTarget = mainView || document.body;
-    let debounceTimer = null;
-    settingsPageObserver = new MutationObserver((mutations) => {
-      if (debounceTimer)
-        return;
-      const hasSettingsChange = mutations.some(
-        (m) => m.type === "childList" && Array.from(m.addedNodes).some(
-          (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("x-settings-container") || node.querySelector?.(".x-settings-container"))
-        )
-      );
-      if (hasSettingsChange) {
-        debounceTimer = setTimeout(() => {
-          debounceTimer = null;
-          const settingsContainer = document.querySelector(".x-settings-container");
-          if (settingsContainer && !document.getElementById("slt-settings-section")) {
-            injectSettingsIntoSpotifySettings();
-          }
-        }, 200);
-      }
-    });
-    settingsPageObserver.observe(observerTarget, {
-      childList: true,
-      subtree: true
-    });
-  }
-  function setupPageObserver() {
-    debug("Setting up page observer...");
-    if (isSpicyLyricsOpen()) {
-      debug("Lyrics view already open");
-      onSpicyLyricsOpen();
-    }
-    const mainView = document.querySelector(".Root__main-view") || document.body;
-    const observerTarget = mainView;
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "childList") {
-          const isLyricsNode = (node) => {
-            if (node.nodeType !== Node.ELEMENT_NODE)
-              return false;
-            const el = node;
-            return el.id === "SpicyLyricsPage" || el.classList?.contains("Cinema--Container") || el.classList?.contains("spicy-lyrics-cinema") || el.classList?.contains("spicy-pip-wrapper") || !!el.querySelector("#SpicyLyricsPage") || !!el.querySelector(".Cinema--Container") || !!el.querySelector(".spicy-pip-wrapper");
-          };
-          const added = Array.from(mutation.addedNodes).some(isLyricsNode);
-          const removed = Array.from(mutation.removedNodes).some(isLyricsNode);
-          if (added) {
-            debug("Lyrics view opened");
-            onSpicyLyricsOpen();
-          }
-          if (removed) {
-            debug("Lyrics view closed");
-            onSpicyLyricsClose();
-          }
-        }
-      }
-    });
-    observer.observe(observerTarget, {
-      childList: true,
-      subtree: true
-    });
-    debug(`Observer attached to ${observerTarget === document.body ? "document.body" : ".Root__main-view"}`);
-    setupPIPObserver();
-  }
-  function setupPIPObserver() {
-    const docPiP = globalThis.documentPictureInPicture;
-    if (!docPiP)
-      return;
-    docPiP.addEventListener("enter", (event) => {
-      debug("PIP window opened");
-      const pipWindow = event.window;
-      if (pipWindow) {
-        setTimeout(() => {
-          injectStylesIntoPIP();
-          insertTranslateButton();
-          setupPIPLyricsObserver(pipWindow);
-          if (state.isEnabled && state.translatedLyrics.size > 0) {
-            const lines = getLyricsLines();
-            if (lines.length > 0) {
-              applyTranslations(lines);
-            }
-          }
-        }, 1e3);
-      }
-    });
-  }
-  function setupPIPLyricsObserver(pipWindow, retryCount = 0) {
-    const MAX_RETRIES = 6;
-    if (retryCount >= MAX_RETRIES) {
-      debug("Max retries reached for PIP lyrics observer setup");
-      return;
-    }
-    let lyricsContent = null;
-    try {
-      lyricsContent = pipWindow.document?.querySelector(".LyricsContent");
-    } catch (e) {
-      debug("PIP window no longer accessible");
-      return;
-    }
-    if (!lyricsContent) {
-      setTimeout(() => setupPIPLyricsObserver(pipWindow, retryCount + 1), 500);
-      return;
-    }
-    try {
-      const pipObserver = new MutationObserver((mutations) => {
-        if (!state.isEnabled || state.isTranslating)
-          return;
-        const hasNewContent = mutations.some(
-          (m) => m.type === "childList" && m.addedNodes.length > 0 && Array.from(m.addedNodes).some(
-            (n) => n.nodeType === Node.ELEMENT_NODE && n.classList?.contains("line")
-          )
-        );
-        if (hasNewContent && !state.isTranslating) {
-          if (translateDebounceTimer) {
-            clearTimeout(translateDebounceTimer);
-          }
-          translateDebounceTimer = setTimeout(() => {
-            translateDebounceTimer = null;
-            if (!state.isTranslating && state.isEnabled) {
-              translateCurrentLyrics();
-            }
-          }, 300);
-        }
-      });
-      pipObserver.observe(lyricsContent, {
-        childList: true,
-        subtree: true
-      });
-      debug("PIP lyrics observer attached");
-    } catch (e) {
-      warn("Failed to setup PIP lyrics observer:", e);
-    }
-  }
-  function getCurrentViewMode() {
-    const pipWindow = getPIPWindow2();
-    if (pipWindow && pipWindow.document.querySelector("#SpicyLyricsPage")) {
-      return "pip";
-    }
-    const page = document.querySelector("#SpicyLyricsPage");
-    if (!page)
-      return "none";
-    if (page.classList.contains("SidebarMode"))
-      return "sidebar";
-    if (page.classList.contains("ForcedCompactMode"))
-      return "compact";
-    if (document.fullscreenElement)
-      return "fullscreen";
-    const isInFullscreenContainer = !!document.querySelector(".Cinema--Container #SpicyLyricsPage");
-    if (isInFullscreenContainer)
-      return "cinema";
-    return "normal";
-  }
   function setupViewModeObserver() {
-    if (viewModeIntervalId) {
+    if (viewModeIntervalId)
       clearInterval(viewModeIntervalId);
-      viewModeIntervalId = null;
-    }
     viewModeIntervalId = setInterval(() => {
-      const currentMode = getCurrentViewMode();
-      if (state.lastViewMode !== null && state.lastViewMode !== currentMode && currentMode !== "none") {
-        debug(`View mode changed: ${state.lastViewMode} -> ${currentMode}`);
-        setTimeout(() => {
+      const isOpen = isSpicyLyricsOpen();
+      if (isOpen) {
+        if (!document.querySelector("#TranslateToggle")) {
           insertTranslateButton();
-          if (state.isEnabled && state.translatedLyrics.size > 0) {
-            const lines = getLyricsLines();
-            if (lines.length > 0) {
-              applyTranslations(lines);
-            }
-          } else if (state.isEnabled) {
-            translateCurrentLyrics();
-          }
-        }, 500);
+        }
+        const pipWindow = getPIPWindow2();
+        if (pipWindow && !pipWindow.document.querySelector("#TranslateToggle")) {
+          insertTranslateButtonIntoDocument(pipWindow.document);
+        }
       }
-      state.lastViewMode = currentMode;
-    }, 3e3);
+    }, 2e3);
   }
   function setupKeyboardShortcut() {
     document.addEventListener("keydown", (e) => {
       if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         e.stopPropagation();
-        if (isSpicyLyricsOpen()) {
+        if (isSpicyLyricsOpen())
           handleTranslateToggle();
-        }
       }
     });
   }
+
+  // src/utils/initialize.ts
   async function initialize() {
     while (typeof Spicetify === "undefined" || !Spicetify.Platform) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     info("Initializing...");
-    state.isEnabled = storage.get("translation-enabled") === "true";
-    state.targetLanguage = storage.get("target-language") || "en";
-    state.autoTranslate = storage.get("auto-translate") === "true";
-    state.showNotifications = storage.get("show-notifications") !== "false";
-    state.preferredApi = storage.get("preferred-api") || "google";
-    state.customApiUrl = storage.get("custom-api-url") || "";
     setPreferredApi(state.preferredApi, state.customApiUrl);
     injectStyles();
     initConnectionIndicator();
-    registerSettingsMenu();
-    setupSettingsPageObserver();
+    await registerSettings();
     startUpdateChecker(30 * 60 * 1e3);
     setupKeyboardShortcut();
-    setupPageObserver();
+    let wasSpicyLyricsOpen = false;
+    const observer = new MutationObserver((mutations) => {
+      const isOpen = isSpicyLyricsOpen();
+      if (isOpen && !wasSpicyLyricsOpen) {
+        wasSpicyLyricsOpen = true;
+        onSpicyLyricsOpen();
+      } else if (!isOpen && wasSpicyLyricsOpen) {
+        wasSpicyLyricsOpen = false;
+        onSpicyLyricsClose();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     setupViewModeObserver();
-    if (Spicetify.Platform?.History?.listen) {
-      Spicetify.Platform.History.listen(() => {
-        setTimeout(() => {
-          if (isSpicyLyricsOpen() && !document.querySelector("#TranslateToggle")) {
-            onSpicyLyricsOpen();
-          }
-        }, 100);
-      });
-    }
     if (Spicetify.Player?.addEventListener) {
       Spicetify.Player.addEventListener("songchange", () => {
-        debug("Song changed");
-        if (translateDebounceTimer) {
-          clearTimeout(translateDebounceTimer);
-          translateDebounceTimer = null;
-        }
-        if (state.translationAbortController) {
-          state.translationAbortController.abort();
-          state.translationAbortController = null;
-        }
         state.isTranslating = false;
         state.translatedLyrics.clear();
         removeTranslations();
@@ -4329,44 +4484,43 @@ body.slt-overlay-active .LyricsContent {}
         }
       });
     }
+    window.SpicyLyricTranslater = {
+      enable: () => {
+        state.isEnabled = true;
+        storage.set("translation-enabled", "true");
+        translateCurrentLyrics();
+      },
+      disable: () => {
+        state.isEnabled = false;
+        storage.set("translation-enabled", "false");
+        removeTranslations();
+      },
+      toggle: () => {
+        if (isSpicyLyricsOpen())
+          handleTranslateToggle();
+      },
+      setLanguage: (lang) => {
+        state.targetLanguage = lang;
+        storage.set("target-language", lang);
+      },
+      translate: translateCurrentLyrics,
+      clearCache: clearTranslationCache,
+      getCacheStats,
+      getCachedTranslations,
+      deleteCachedTranslation,
+      getState: () => ({ ...state }),
+      checkForUpdates: () => checkForUpdates(true),
+      getUpdateInfo,
+      version: VERSION,
+      connectivity: {
+        getState: getConnectionState,
+        refresh: refreshConnection
+      }
+    };
     info("Initialized successfully!");
   }
-  window.SpicyLyricTranslater = {
-    enable: () => {
-      state.isEnabled = true;
-      storage.set("translation-enabled", "true");
-      translateCurrentLyrics();
-    },
-    disable: () => {
-      state.isEnabled = false;
-      storage.set("translation-enabled", "false");
-      removeTranslations();
-    },
-    toggle: () => {
-      if (isSpicyLyricsOpen()) {
-        handleTranslateToggle();
-      }
-    },
-    setLanguage: (lang) => {
-      state.targetLanguage = lang;
-      storage.set("target-language", lang);
-    },
-    translate: translateCurrentLyrics,
-    showSettings: showSettingsModal,
-    showCacheViewer: showCacheViewerModal,
-    clearCache: clearTranslationCache,
-    getCacheStats,
-    getCachedTranslations,
-    deleteCachedTranslation,
-    getState: () => ({ ...state }),
-    checkForUpdates: () => checkForUpdates(true),
-    getUpdateInfo,
-    version: VERSION,
-    connectivity: {
-      getState: getConnectionState,
-      refresh: refreshConnection
-    }
-  };
+
+  // src/app.ts
   initialize().catch(error);
   var app_default = initialize;
   return __toCommonJS(app_exports);

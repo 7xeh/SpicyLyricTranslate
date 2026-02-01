@@ -86,6 +86,12 @@ declare const Spicetify: {
         get: (key: string) => string | null;
         set: (key: string, value: string) => void;
     };
+    CosmosAsync: {
+        get: (url: string, body?: any) => Promise<any>;
+        post: (url: string, body?: any) => Promise<any>;
+        put: (url: string, body?: any) => Promise<any>;
+        del: (url: string, body?: any) => Promise<any>;
+    };
     colorExtractor: (uri: string) => Promise<any>;
 };
 

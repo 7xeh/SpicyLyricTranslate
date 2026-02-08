@@ -158,8 +158,9 @@ var SpicyLyricTranslater = (() => {
     translatedLyrics: /* @__PURE__ */ new Map(),
     lastViewMode: null,
     translationAbortController: null,
-    overlayMode: storage.get("overlay-mode") || "replace",
-    detectedLanguage: null
+    overlayMode: storage.get("overlay-mode") || "interleaved",
+    detectedLanguage: null,
+    syncWordHighlight: storage.get("sync-word-highlight") !== "false"
   };
 
   // src/utils/debug.ts
@@ -497,8 +498,8 @@ var SpicyLyricTranslater = (() => {
     backoffMultiplier: 2
   };
   var lastApiCallTime = 0;
-  var BATCH_SEPARATOR = "\n\u200B\u2063\u200B\n";
-  var BATCH_SEPARATOR_REGEX = /\n?[\u200B\u2063]+\n?/g;
+  var BATCH_SEPARATOR = " ||| ";
+  var BATCH_SEPARATOR_REGEX = /\s*\|\|\|\s*/g;
   async function rateLimitedDelay() {
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCallTime;
@@ -742,12 +743,7 @@ var SpicyLyricTranslater = (() => {
           text,
           q: text,
           source: "auto",
-          source_lang: "auto",
-          sourceLang: "auto",
           target: targetLang,
-          target_lang: targetLang,
-          targetLang,
-          to: targetLang,
           format: "text"
         })
       });
@@ -922,6 +918,9 @@ var SpicyLyricTranslater = (() => {
       if (result.detectedLanguage) {
         detectedLang = result.detectedLanguage;
       }
+      if (translatedLines.length !== uncachedLines.length) {
+        throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines.length}. API might have stripped delimiters.`);
+      }
       uncachedLines.forEach((item, i) => {
         const translation = translatedLines[i]?.trim() || item.text;
         cachedResults.set(item.index, {
@@ -932,25 +931,21 @@ var SpicyLyricTranslater = (() => {
         });
       });
     } catch (error2) {
-      error("Batch translation failed, falling back to line-by-line:", error2);
+      error("Batch translation failed (fallback disabled to prevent rate limits):", error2);
       for (const item of uncachedLines) {
-        try {
-          const result = await retryWithBackoff(() => translateText(item.text, targetLang));
-          cachedResults.set(item.index, result);
-        } catch {
-          cachedResults.set(item.index, {
-            originalText: item.text,
-            translatedText: item.text,
-            targetLanguage: targetLang,
-            wasTranslated: false
-          });
-        }
+        cachedResults.set(item.index, {
+          originalText: item.text,
+          translatedText: item.text,
+          targetLanguage: targetLang,
+          wasTranslated: false
+        });
       }
     }
     for (let i = 0; i < lines.length; i++) {
       results.push(cachedResults.get(i));
     }
-    if (currentTrackUri && results.length > 0) {
+    const someTranslated = results.some((r) => r.wasTranslated);
+    if (currentTrackUri && results.length > 0 && someTranslated) {
       const translatedLines = results.map((r) => r.translatedText);
       setTrackCache(currentTrackUri, targetLang, detectedLang, translatedLines, preferredApi);
     }
@@ -1015,10 +1010,14 @@ var SpicyLyricTranslater = (() => {
   var currentConfig = {
     mode: "replace",
     opacity: 0.85,
-    fontSize: 0.9
+    fontSize: 0.9,
+    syncWordHighlight: true
   };
   var isOverlayEnabled = false;
   var translationMap = /* @__PURE__ */ new Map();
+  var cachedLines = null;
+  var cachedTranslationMap = null;
+  var lastActiveIndex = -1;
   function getPIPWindow() {
     try {
       const docPiP = globalThis.documentPictureInPicture;
@@ -1173,6 +1172,9 @@ var SpicyLyricTranslater = (() => {
     }
   }
   function applyInterleavedMode(doc) {
+    cachedLines = null;
+    cachedTranslationMap = null;
+    lastActiveIndex = -1;
     try {
       const lines = getLyricLines(doc);
       if (!lines || lines.length === 0) {
@@ -1180,6 +1182,7 @@ var SpicyLyricTranslater = (() => {
         return;
       }
       doc.querySelectorAll(".slt-interleaved-translation").forEach((el) => el.remove());
+      doc.querySelectorAll(".slt-sync-translation").forEach((el) => el.remove());
       lines.forEach((line, index) => {
         try {
           const translation = translationMap.get(index);
@@ -1197,9 +1200,34 @@ var SpicyLyricTranslater = (() => {
           const translationEl = doc.createElement("div");
           translationEl.className = "slt-interleaved-translation";
           translationEl.dataset.forLine = index.toString();
+          translationEl.dataset.lineIndex = index.toString();
           if (isBreak) {
             translationEl.textContent = "\u2022 \u2022 \u2022";
             translationEl.classList.add("slt-music-break");
+          } else if (currentConfig.syncWordHighlight) {
+            translationEl.classList.add("slt-sync-translation");
+            const lyricsContainer = doc.querySelector(".SpicyLyricsScrollContainer");
+            const lyricsType = lyricsContainer?.getAttribute("data-lyrics-type") || "Line";
+            const originalWords = line.querySelectorAll(".word:not(.dot), .letterGroup .letter, .syllable");
+            const translatedWords = translation?.trim().split(/\s+/) || [];
+            debug(`Line ${index}: Type=${lyricsType}, Found ${originalWords.length} original words, ${translatedWords.length} translated words`);
+            if (lyricsType === "Syllable" && originalWords.length > 0 && translatedWords.length > 0) {
+              const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+              translatedWords.forEach((word, wordIndex) => {
+                const originalIndex = Math.min(
+                  Math.floor(wordIndex / Math.max(ratio, 0.01)),
+                  originalWords.length - 1
+                );
+                const span = doc.createElement("span");
+                span.className = "slt-sync-word slt-word-future";
+                span.textContent = wordIndex < translatedWords.length - 1 ? word + " " : word;
+                span.dataset.originalIndex = originalIndex.toString();
+                span.dataset.wordIndex = wordIndex.toString();
+                translationEl.appendChild(span);
+              });
+            } else {
+              translationEl.textContent = translation || "";
+            }
           } else {
             translationEl.textContent = translation || "";
           }
@@ -1227,6 +1255,150 @@ var SpicyLyricTranslater = (() => {
     container.style.setProperty("--slt-overlay-font-scale", currentConfig.fontSize.toString());
     return container;
   }
+  function applySyncedMode(doc) {
+    try {
+      const lines = getLyricLines(doc);
+      if (!lines || lines.length === 0) {
+        debug("No lyrics lines found for synced mode");
+        return;
+      }
+      doc.querySelectorAll(".slt-sync-translation").forEach((el) => el.remove());
+      lines.forEach((line, index) => {
+        try {
+          const translation = translationMap.get(index);
+          const originalText = extractLineText(line);
+          const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
+          if (!translation && !isBreak)
+            return;
+          if (translation === originalText)
+            return;
+          if (!line.parentNode)
+            return;
+          line.classList.add("slt-overlay-parent");
+          line.dataset.sltIndex = index.toString();
+          const translationEl = doc.createElement("div");
+          translationEl.className = "slt-sync-translation slt-interleaved-translation";
+          translationEl.dataset.lineIndex = index.toString();
+          if (isBreak) {
+            translationEl.textContent = "\u2022 \u2022 \u2022";
+            translationEl.classList.add("slt-music-break");
+          } else if (currentConfig.syncWordHighlight) {
+            const originalWords = line.querySelectorAll(".word:not(.dot), .syllable");
+            const translatedWords = translation?.trim().split(/\s+/) || [];
+            if (originalWords.length > 0 && translatedWords.length > 0) {
+              const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+              translatedWords.forEach((word, wordIndex) => {
+                const originalIndex = Math.min(
+                  Math.floor(wordIndex / Math.max(ratio, 0.01)),
+                  originalWords.length - 1
+                );
+                const span = doc.createElement("span");
+                span.className = "slt-sync-word slt-word-future";
+                span.textContent = wordIndex < translatedWords.length - 1 ? word + " " : word;
+                span.dataset.originalIndex = originalIndex.toString();
+                span.dataset.wordIndex = wordIndex.toString();
+                translationEl.appendChild(span);
+              });
+            } else {
+              translationEl.textContent = translation || "";
+            }
+          } else {
+            translationEl.textContent = translation || "";
+          }
+          if (isLineActive(line)) {
+            translationEl.classList.add("active");
+          }
+          line.parentNode.insertBefore(translationEl, line.nextSibling);
+        } catch (lineErr) {
+          warn("Failed to process line for synced mode", index, ":", lineErr);
+        }
+      });
+    } catch (err) {
+      warn("Failed to apply synced mode:", err);
+    }
+  }
+  function updateSyncedWordStates(doc) {
+    if (!isOverlayEnabled || !currentConfig.syncWordHighlight)
+      return;
+    const lyricsContainer = doc.querySelector(".SpicyLyricsScrollContainer");
+    const lyricsType = lyricsContainer?.getAttribute("data-lyrics-type") || "Line";
+    doc.querySelectorAll(".slt-sync-translation").forEach((transLine) => {
+      const transLineEl = transLine;
+      const lineIndex = parseInt(transLineEl.dataset.lineIndex || "-1");
+      if (lineIndex < 0)
+        return;
+      const lines = getLyricLines(doc);
+      if (lineIndex >= lines.length)
+        return;
+      const originalLine = lines[lineIndex];
+      if (!originalLine)
+        return;
+      const isActive = isLineActive(originalLine);
+      transLine.classList.toggle("active", isActive);
+      if (lyricsType === "Line") {
+        const isSung = originalLine.classList.contains("Sung");
+        const isLineActiveClass = originalLine.classList.contains("Active");
+        const gradientPos = originalLine.style.getPropertyValue("--gradient-position");
+        const blurRadius = originalLine.style.getPropertyValue("--text-shadow-blur-radius");
+        const shadowOpacity = originalLine.style.getPropertyValue("--text-shadow-opacity");
+        if (gradientPos && gradientPos.trim()) {
+          transLineEl.style.setProperty("--gradient-position", gradientPos);
+        } else if (isSung) {
+          transLineEl.style.setProperty("--gradient-position", "100%");
+        } else if (!isLineActiveClass) {
+          transLineEl.style.setProperty("--gradient-position", "-20%");
+        }
+        if (blurRadius && blurRadius.trim()) {
+          transLineEl.style.setProperty("--text-shadow-blur-radius", blurRadius);
+        }
+        if (shadowOpacity && shadowOpacity.trim()) {
+          transLineEl.style.setProperty("--text-shadow-opacity", shadowOpacity);
+          const opacityValue = parseFloat(shadowOpacity);
+          if (!isNaN(opacityValue)) {
+            transLineEl.style.setProperty("--text-shadow-opacity-decimal", (opacityValue / 100).toString());
+          }
+        }
+        return;
+      }
+      const transWords = transLine.querySelectorAll(".slt-sync-word");
+      const originalWords = originalLine.querySelectorAll(".word:not(.dot), .letterGroup .letter, .syllable");
+      transWords.forEach((transWord) => {
+        const transWordEl = transWord;
+        const originalIndex = parseInt(transWordEl.dataset.originalIndex || "0");
+        if (originalIndex < originalWords.length) {
+          const originalWord = originalWords[originalIndex];
+          const isSung = originalWord.classList.contains("Sung") || originalWord.classList.contains("sung");
+          const isWordActive = originalWord.classList.contains("Active") || originalWord.classList.contains("active");
+          transWord.classList.remove("slt-word-past", "slt-word-active", "slt-word-future");
+          if (isSung) {
+            transWord.classList.add("slt-word-past");
+            transWordEl.style.setProperty("--gradient-position", "100%");
+          } else if (isWordActive) {
+            transWord.classList.add("slt-word-active");
+            const gradientPos = originalWord.style.getPropertyValue("--gradient-position");
+            if (gradientPos && gradientPos.trim()) {
+              transWordEl.style.setProperty("--gradient-position", gradientPos);
+            }
+          } else {
+            transWord.classList.add("slt-word-future");
+            transWordEl.style.setProperty("--gradient-position", "-20%");
+          }
+          const blurRadius = originalWord.style.getPropertyValue("--text-shadow-blur-radius");
+          const shadowOpacity = originalWord.style.getPropertyValue("--text-shadow-opacity");
+          if (blurRadius && blurRadius.trim()) {
+            transWordEl.style.setProperty("--text-shadow-blur-radius", blurRadius);
+          }
+          if (shadowOpacity && shadowOpacity.trim()) {
+            const opacityValue = parseFloat(shadowOpacity);
+            if (!isNaN(opacityValue)) {
+              transWordEl.style.setProperty("--text-shadow-opacity-decimal", (opacityValue / 100).toString());
+            }
+            transWordEl.style.setProperty("--text-shadow-opacity", shadowOpacity);
+          }
+        }
+      });
+    });
+  }
   function renderTranslations(doc) {
     if (!isOverlayEnabled || translationMap.size === 0)
       return;
@@ -1236,6 +1408,9 @@ var SpicyLyricTranslater = (() => {
         break;
       case "interleaved":
         applyInterleavedMode(doc);
+        break;
+      case "synced":
+        applySyncedMode(doc);
         break;
     }
   }
@@ -1269,26 +1444,40 @@ var SpicyLyricTranslater = (() => {
     lastActiveLineUpdate = now;
     try {
       if (currentConfig.mode === "interleaved") {
-        const lines = getLyricLines(doc);
-        if (!lines || lines.length === 0)
+        if (!cachedLines) {
+          cachedLines = getLyricLines(doc);
+        }
+        if (!cachedLines || cachedLines.length === 0)
           return;
-        const translations = doc.querySelectorAll(".slt-interleaved-translation");
-        translations.forEach((translationEl) => {
-          try {
-            const lineIndex = parseInt(translationEl.dataset.forLine || "-1", 10);
-            if (lineIndex >= 0 && lineIndex < lines.length) {
-              const line = lines[lineIndex];
-              if (line) {
-                const shouldBeActive = isLineActive(line);
-                const isActive = translationEl.classList.contains("active");
-                if (shouldBeActive !== isActive) {
-                  translationEl.classList.toggle("active", shouldBeActive);
-                }
-              }
-            }
-          } catch (e) {
+        if (!cachedTranslationMap) {
+          cachedTranslationMap = /* @__PURE__ */ new Map();
+          const translationEls = doc.querySelectorAll(".slt-interleaved-translation");
+          translationEls.forEach((el) => {
+            const idx = parseInt(el.dataset.forLine || "-1", 10);
+            if (idx >= 0)
+              cachedTranslationMap.set(idx, el);
+          });
+        }
+        let currentActiveIndex = -1;
+        for (let i = 0; i < cachedLines.length; i++) {
+          if (isLineActive(cachedLines[i])) {
+            currentActiveIndex = i;
+            break;
           }
-        });
+        }
+        if (currentActiveIndex !== lastActiveIndex) {
+          if (lastActiveIndex !== -1) {
+            const oldEl = cachedTranslationMap.get(lastActiveIndex);
+            if (oldEl)
+              oldEl.classList.remove("active");
+          }
+          if (currentActiveIndex !== -1) {
+            const newEl = cachedTranslationMap.get(currentActiveIndex);
+            if (newEl)
+              newEl.classList.add("active");
+          }
+          lastActiveIndex = currentActiveIndex;
+        }
       }
     } catch (err) {
     }
@@ -1303,12 +1492,14 @@ var SpicyLyricTranslater = (() => {
         return;
       try {
         onActiveLineChanged(document);
+        updateSyncedWordStates(document);
         const pipWindow = getPIPWindow();
         if (pipWindow) {
           try {
             const pipDoc = pipWindow.document;
             if (pipDoc && pipDoc.body) {
               onActiveLineChanged(pipDoc);
+              updateSyncedWordStates(pipDoc);
               if (!activeLineObservers.has(pipDoc)) {
                 setupActiveLineObserver(pipDoc);
               }
@@ -1355,23 +1546,23 @@ var SpicyLyricTranslater = (() => {
       const observer = new MutationObserver((mutations) => {
         try {
           let activeChanged = false;
+          let structureChanged = false;
           for (const mutation of mutations) {
-            if (mutation.type === "attributes") {
+            if (mutation.type === "childList") {
+              structureChanged = true;
+              if (mutation.addedNodes.length > 0)
+                activeChanged = true;
+            } else if (mutation.type === "attributes") {
               const target = mutation.target;
               if (target && (target.classList?.contains("line") || target.closest?.(".line"))) {
                 activeChanged = true;
-                break;
               }
             }
-            if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-              const hasLineChange = Array.from(mutation.addedNodes).some(
-                (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList?.contains("line") || node.querySelector?.(".line"))
-              );
-              if (hasLineChange) {
-                activeChanged = true;
-                break;
-              }
-            }
+          }
+          if (structureChanged) {
+            cachedLines = null;
+            cachedTranslationMap = null;
+            lastActiveIndex = -1;
           }
           if (activeChanged) {
             onActiveLineChanged(doc);
@@ -1430,6 +1621,7 @@ var SpicyLyricTranslater = (() => {
       if (interleavedOverlay)
         interleavedOverlay.remove();
       doc.querySelectorAll(".slt-interleaved-translation").forEach((el) => el.remove());
+      doc.querySelectorAll(".slt-sync-translation").forEach((el) => el.remove());
       doc.querySelectorAll(".spicy-translation-container").forEach((el) => el.remove());
       doc.querySelectorAll(".spicy-hidden-original").forEach((el) => {
         el.classList.remove("spicy-hidden-original");
@@ -1446,6 +1638,9 @@ var SpicyLyricTranslater = (() => {
       });
       doc.querySelectorAll(".slt-overlay-parent, .spicy-translated").forEach((el) => {
         el.classList.remove("slt-overlay-parent", "spicy-translated");
+      });
+      doc.querySelectorAll(".slt-sync-word").forEach((el) => {
+        el.classList.remove("slt-word-past", "slt-word-active", "slt-word-future");
       });
     };
     cleanup(document);
@@ -1472,10 +1667,12 @@ var SpicyLyricTranslater = (() => {
   }
   function setOverlayConfig(config) {
     const wasEnabled = isOverlayEnabled;
+    const savedTranslations = new Map(translationMap);
     if (wasEnabled) {
       disableOverlay();
     }
     currentConfig = { ...currentConfig, ...config };
+    translationMap = savedTranslations;
     if (wasEnabled) {
       enableOverlay();
     }
@@ -1955,8 +2152,43 @@ body.slt-overlay-active .LyricsContent {}
     color: var(--spice-text, #fff);
     opacity: 1;
     font-weight: 600;
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+    text-shadow: 
+        0 0 var(--text-shadow-blur-radius, 20px) rgba(255, 255, 255, 0.3),
+        0 0 calc(var(--text-shadow-blur-radius, 20px) * 0.5) rgba(255, 255, 255, 0.2);
     filter: none;
+}
+
+/* Line-type gradient sync for translation elements */
+.slt-sync-translation.slt-interleaved-translation {
+    --gradient-alpha: 0.85;
+    --gradient-alpha-end: 0.5;
+    --gradient-position: -20%;
+    color: transparent !important;
+    background-image: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, var(--gradient-alpha)) var(--gradient-position),
+        rgba(255, 255, 255, var(--gradient-alpha-end)) calc(var(--gradient-position) + 20%)
+    ) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.slt-sync-translation.slt-interleaved-translation.active {
+    text-shadow: 
+        0 0 var(--text-shadow-blur-radius, 8px) rgba(255, 255, 255, var(--text-shadow-opacity-decimal, 0.3)),
+        0 0 calc(var(--text-shadow-blur-radius, 8px) * 2) rgba(255, 255, 255, calc(var(--text-shadow-opacity-decimal, 0.3) * 0.5));
+}
+
+/* Sung translations should be fully revealed */
+.line.Sung + .slt-sync-translation.slt-interleaved-translation {
+    --gradient-position: 100%;
+}
+
+/* Not sung translations should be dimmed */
+.line.NotSung + .slt-sync-translation.slt-interleaved-translation {
+    --gradient-position: -20%;
+    opacity: 0.51;
 }
 
 .spicy-pip-wrapper .slt-interleaved-overlay .slt-interleaved-translation,
@@ -1982,6 +2214,328 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
     margin-top: 1px;
     margin-bottom: 3px;
 }
+
+/* ============================================
+   SYNCHRONIZED WORD-LEVEL HIGHLIGHTING STYLES
+   ============================================ */
+
+/* Line container for synchronized lyrics */
+.slt-sync-line {
+    position: relative;
+    display: block;
+    margin: 8px 0;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* Original text layer */
+.slt-sync-original {
+    display: block;
+    line-height: 1.4;
+}
+
+/* Translation text layer */
+.slt-sync-translation {
+    display: block;
+    font-size: 0.75em;
+    margin-top: 4px;
+    line-height: 1.3;
+    opacity: 0.7;
+}
+
+/* Word span base styles */
+.slt-sync-word {
+    display: inline;
+    transition: 
+        opacity 0.15s ease-out,
+        color 0.15s ease-out,
+        text-shadow 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+        transform 0.15s ease-out;
+    will-change: opacity, color, text-shadow;
+}
+
+/* ============================================
+   WORD STATE: PAST (Already sung)
+   ============================================ */
+.slt-sync-word.slt-word-past {
+    opacity: 1;
+    --gradient-alpha: 0.85;
+    --gradient-alpha-end: 0.5;
+    --gradient-position: 100%;
+    background-image: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, var(--gradient-alpha)) var(--gradient-position),
+        rgba(255, 255, 255, var(--gradient-alpha-end)) calc(var(--gradient-position) + 20%)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.slt-sync-translation .slt-sync-word.slt-word-past {
+    opacity: 0.9;
+}
+
+/* ============================================
+   WORD STATE: ACTIVE (Currently being sung)
+   ============================================ */
+.slt-sync-word.slt-word-active {
+    opacity: 1;
+    color: #fff;
+    text-shadow: 
+        0 0 var(--text-shadow-blur-radius, 10px) rgba(255, 255, 255, var(--text-shadow-opacity-decimal, 0.5)),
+        0 0 calc(var(--text-shadow-blur-radius, 10px) * 2) rgba(255, 255, 255, calc(var(--text-shadow-opacity-decimal, 0.5) * 0.6));
+    transform: scale(1.02);
+}
+
+.slt-sync-translation .slt-sync-word.slt-word-active {
+    opacity: 1;
+    color: #fff;
+    text-shadow: 
+        0 0 var(--text-shadow-blur-radius, 8px) rgba(255, 255, 255, var(--text-shadow-opacity-decimal, 0.4)),
+        0 0 calc(var(--text-shadow-blur-radius, 8px) * 2) rgba(255, 255, 255, calc(var(--text-shadow-opacity-decimal, 0.4) * 0.5));
+}
+
+/* Gradient progress effect for active word - mirrors Spicy Lyrics */
+.slt-sync-word.slt-word-active {
+    --gradient-alpha: 0.85;
+    --gradient-alpha-end: 0.5;
+    --gradient-offset: 0%;
+    background-image: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, var(--gradient-alpha)) var(--gradient-position, -20%),
+        rgba(255, 255, 255, var(--gradient-alpha-end)) calc(var(--gradient-position, -20%) + 20% + var(--gradient-offset))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ============================================
+   WORD STATE: FUTURE (Upcoming words)
+   ============================================ */
+.slt-sync-word.slt-word-future {
+    opacity: 0.51;
+    --gradient-alpha: 0.85;
+    --gradient-alpha-end: 0.5;
+    --gradient-position: -20%;
+    background-image: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, var(--gradient-alpha)) var(--gradient-position),
+        rgba(255, 255, 255, var(--gradient-alpha-end)) calc(var(--gradient-position) + 20%)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.slt-sync-translation .slt-sync-word.slt-word-future {
+    opacity: 0.4;
+}
+
+/* ============================================
+   LINE STATES
+   ============================================ */
+
+/* Line: Sung (past lines) */
+.slt-sync-line.slt-line-sung {
+    opacity: 0.6;
+    filter: blur(0.5px);
+}
+
+.slt-sync-line.slt-line-sung .slt-sync-word {
+    opacity: 0.9;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: none;
+}
+
+/* Line: Active (current line) */
+.slt-sync-line.slt-line-active {
+    opacity: 1;
+    filter: none;
+}
+
+.slt-sync-line.slt-line-active .slt-sync-translation {
+    opacity: 1;
+}
+
+/* Active line container highlight */
+.slt-sync-line.slt-active-line-container {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 4px -12px;
+}
+
+/* Line: Not Sung (future lines) */
+.slt-sync-line.slt-line-notsung {
+    opacity: 0.5;
+    filter: blur(1px);
+}
+
+.slt-sync-line.slt-line-notsung .slt-sync-word {
+    opacity: 0.3;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.slt-sync-line.slt-line-notsung .slt-sync-translation {
+    opacity: 0.4;
+}
+
+/* ============================================
+   SMOOTH SCROLL CONTAINER STYLES
+   ============================================ */
+.slt-lyrics-scroll-container {
+    overflow-y: scroll;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
+.slt-lyrics-scroll-container::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/Opera */
+}
+
+/* Ensure smooth scrolling on the lyrics container */
+#SpicyLyricsPage .SpicyLyricsScrollContainer,
+#SpicyLyricsPage .LyricsContent,
+.LyricsContainer .LyricsContent {
+    scroll-behavior: smooth;
+}
+
+/* ============================================
+   INTEGRATION WITH SPICY LYRICS EXISTING STYLES
+   ============================================ */
+
+/* Sync word highlighting within existing Spicy Lyrics lines */
+#SpicyLyricsPage .line .slt-sync-word.slt-word-past,
+.SpicyLyricsScrollContainer .line .slt-sync-word.slt-word-past {
+    opacity: 1;
+    color: #fff;
+}
+
+#SpicyLyricsPage .line .slt-sync-word.slt-word-active,
+.SpicyLyricsScrollContainer .line .slt-sync-word.slt-word-active {
+    opacity: 1;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+#SpicyLyricsPage .line .slt-sync-word.slt-word-future,
+.SpicyLyricsScrollContainer .line .slt-sync-word.slt-word-future {
+    opacity: 0.3;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Translation overlay synced with line state */
+.line.Sung + .slt-sync-translation .slt-sync-word {
+    opacity: 0.9;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.line.Active + .slt-sync-translation {
+    opacity: 1 !important;
+    filter: none !important;
+}
+
+.line.Active + .slt-sync-translation .slt-sync-word.slt-word-active {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.line.NotSung + .slt-sync-translation .slt-sync-word {
+    opacity: 0.3;
+}
+
+/* ============================================
+   ANIMATION KEYFRAMES
+   ============================================ */
+
+@keyframes slt-word-glow-pulse {
+    0% {
+        text-shadow: 
+            0 0 4px rgba(255, 255, 255, 0.4),
+            0 0 8px rgba(255, 255, 255, 0.2);
+    }
+    50% {
+        text-shadow: 
+            0 0 12px rgba(255, 255, 255, 0.6),
+            0 0 24px rgba(255, 255, 255, 0.4),
+            0 0 36px rgba(255, 255, 255, 0.2);
+    }
+    100% {
+        text-shadow: 
+            0 0 10px rgba(255, 255, 255, 0.5),
+            0 0 20px rgba(255, 255, 255, 0.3);
+    }
+}
+
+/* Active word glow animation */
+.slt-sync-word.slt-word-active.slt-animate-glow {
+    animation: slt-word-glow-pulse 0.3s ease-out forwards;
+}
+
+/* Smooth word transition for entering active state */
+@keyframes slt-word-activate {
+    0% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1.02);
+    }
+}
+
+.slt-sync-word.slt-word-active {
+    animation: slt-word-activate 0.15s ease-out forwards;
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+/* Sidebar mode */
+body.SpicySidebarLyrics__Active .slt-sync-line {
+    margin: 4px 0;
+}
+
+body.SpicySidebarLyrics__Active .slt-sync-translation {
+    font-size: 0.65em;
+    margin-top: 2px;
+}
+
+body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* PiP mode */
+.spicy-pip-wrapper .slt-sync-line {
+    margin: 6px 0;
+}
+
+.spicy-pip-wrapper .slt-sync-translation {
+    font-size: 0.8em;
+}
+
+/* Cinema/Fullscreen mode */
+.Cinema--Container .slt-sync-line,
+#SpicyLyricsPage.ForcedCompactMode .slt-sync-line {
+    margin: 12px 0;
+}
+
+.Cinema--Container .slt-sync-translation,
+#SpicyLyricsPage.ForcedCompactMode .slt-sync-translation {
+    font-size: 0.85em;
+    margin-top: 6px;
+}
+
+.Cinema--Container .slt-sync-word.slt-word-active,
+#SpicyLyricsPage.ForcedCompactMode .slt-sync-word.slt-word-active {
+    text-shadow: 
+        0 0 15px rgba(255, 255, 255, 0.6),
+        0 0 30px rgba(255, 255, 255, 0.4),
+        0 0 45px rgba(255, 255, 255, 0.2);
+}
 `;
   function injectStyles() {
     const existingStyle = document.getElementById("spicy-lyric-translater-styles");
@@ -2000,7 +2554,7 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.7.7" : "0.0.0";
+    return true ? "1.7.9" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
@@ -4266,7 +4820,10 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
         }
       });
       if (!isOverlayActive()) {
-        enableOverlay({ mode: state.overlayMode });
+        enableOverlay({
+          mode: state.overlayMode,
+          syncWordHighlight: state.syncWordHighlight
+        });
       }
       updateOverlayContent(translationMapByIndex);
       return;

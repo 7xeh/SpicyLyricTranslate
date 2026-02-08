@@ -15,6 +15,7 @@ export interface ExtensionState {
     translationAbortController: AbortController | null;
     overlayMode: OverlayMode;
     detectedLanguage: string | null;
+    syncWordHighlight: boolean;
 }
 
 export const state: ExtensionState = {
@@ -29,6 +30,7 @@ export const state: ExtensionState = {
     translatedLyrics: new Map(),
     lastViewMode: null,
     translationAbortController: null,
-    overlayMode: (storage.get('overlay-mode') as OverlayMode) || 'replace',
-    detectedLanguage: null
+    overlayMode: (storage.get('overlay-mode') as OverlayMode) || 'interleaved',
+    detectedLanguage: null,
+    syncWordHighlight: storage.get('sync-word-highlight') !== 'false'
 };

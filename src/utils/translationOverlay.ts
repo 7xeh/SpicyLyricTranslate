@@ -1,21 +1,27 @@
 import { debug, warn } from './debug';
 
-export type OverlayMode = 'replace' | 'interleaved';
+export type OverlayMode = 'replace' | 'interleaved' | 'synced';
 
 export interface OverlayConfig {
     mode: OverlayMode;
     opacity: number;
     fontSize: number;
+    syncWordHighlight: boolean;
 }
 
 let currentConfig: OverlayConfig = {
     mode: 'replace',
     opacity: 0.85,
-    fontSize: 0.9
+    fontSize: 0.9,
+    syncWordHighlight: true
 };
 
 let isOverlayEnabled = false;
 let translationMap: Map<number, string> = new Map();
+
+let cachedLines: NodeListOf<Element> | null = null;
+let cachedTranslationMap: Map<number, HTMLElement> | null = null;
+let lastActiveIndex = -1;
 
 function getPIPWindow(): Window | null {
     try {
@@ -193,6 +199,10 @@ function cleanupInterleavedTracking(): void {
 }
 
 function applyInterleavedMode(doc: Document): void {
+    cachedLines = null;
+    cachedTranslationMap = null;
+    lastActiveIndex = -1;
+
     try {
         const lines = getLyricLines(doc);
         if (!lines || lines.length === 0) {
@@ -201,6 +211,7 @@ function applyInterleavedMode(doc: Document): void {
         }
         
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
+        doc.querySelectorAll('.slt-sync-translation').forEach(el => el.remove());
         
         lines.forEach((line, index) => {
             try {
@@ -222,10 +233,42 @@ function applyInterleavedMode(doc: Document): void {
                 const translationEl = doc.createElement('div');
                 translationEl.className = 'slt-interleaved-translation';
                 translationEl.dataset.forLine = index.toString();
+                translationEl.dataset.lineIndex = index.toString();
                 
                 if (isBreak) {
                     translationEl.textContent = '• • •';
                     translationEl.classList.add('slt-music-break');
+                } else if (currentConfig.syncWordHighlight) {
+                    translationEl.classList.add('slt-sync-translation');
+                    
+                    const lyricsContainer = doc.querySelector('.SpicyLyricsScrollContainer');
+                    const lyricsType = lyricsContainer?.getAttribute('data-lyrics-type') || 'Line';
+                    
+                    const originalWords = line.querySelectorAll('.word:not(.dot), .letterGroup .letter, .syllable');
+                    const translatedWords = translation?.trim().split(/\s+/) || [];
+                    
+                    debug(`Line ${index}: Type=${lyricsType}, Found ${originalWords.length} original words, ${translatedWords.length} translated words`);
+                    
+                    if (lyricsType === 'Syllable' && originalWords.length > 0 && translatedWords.length > 0) {
+                        const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+                        
+                        translatedWords.forEach((word, wordIndex) => {
+                            const originalIndex = Math.min(
+                                Math.floor(wordIndex / Math.max(ratio, 0.01)),
+                                originalWords.length - 1
+                            );
+                            
+                            const span = doc.createElement('span');
+                            span.className = 'slt-sync-word slt-word-future';
+                            span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
+                            span.dataset.originalIndex = originalIndex.toString();
+                            span.dataset.wordIndex = wordIndex.toString();
+                            
+                            translationEl.appendChild(span);
+                        });
+                    } else {
+                        translationEl.textContent = translation || '';
+                    }
                 } else {
                     translationEl.textContent = translation || '';
                 }
@@ -260,6 +303,179 @@ function initOverlayContainer(doc: Document): HTMLElement | null {
     return container;
 }
 
+function applySyncedMode(doc: Document): void {
+    try {
+        const lines = getLyricLines(doc);
+        if (!lines || lines.length === 0) {
+            debug('No lyrics lines found for synced mode');
+            return;
+        }
+        
+        doc.querySelectorAll('.slt-sync-translation').forEach(el => el.remove());
+        
+        lines.forEach((line, index) => {
+            try {
+                const translation = translationMap.get(index);
+                const originalText = extractLineText(line);
+                
+                const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
+                
+                if (!translation && !isBreak) return;
+                if (translation === originalText) return;
+                
+                if (!line.parentNode) return;
+                
+                line.classList.add('slt-overlay-parent');
+                (line as HTMLElement).dataset.sltIndex = index.toString();
+                
+                const translationEl = doc.createElement('div');
+                translationEl.className = 'slt-sync-translation slt-interleaved-translation';
+                translationEl.dataset.lineIndex = index.toString();
+                
+                if (isBreak) {
+                    translationEl.textContent = '• • •';
+                    translationEl.classList.add('slt-music-break');
+                } else if (currentConfig.syncWordHighlight) {
+                    const originalWords = line.querySelectorAll('.word:not(.dot), .syllable');
+                    const translatedWords = translation?.trim().split(/\s+/) || [];
+                    
+                    if (originalWords.length > 0 && translatedWords.length > 0) {
+                        const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+                        
+                        translatedWords.forEach((word, wordIndex) => {
+                            const originalIndex = Math.min(
+                                Math.floor(wordIndex / Math.max(ratio, 0.01)),
+                                originalWords.length - 1
+                            );
+                            
+                            const span = doc.createElement('span');
+                            span.className = 'slt-sync-word slt-word-future';
+                            span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
+                            span.dataset.originalIndex = originalIndex.toString();
+                            span.dataset.wordIndex = wordIndex.toString();
+                            
+                            translationEl.appendChild(span);
+                        });
+                    } else {
+                        translationEl.textContent = translation || '';
+                    }
+                } else {
+                    translationEl.textContent = translation || '';
+                }
+                
+                if (isLineActive(line)) {
+                    translationEl.classList.add('active');
+                }
+                
+                line.parentNode.insertBefore(translationEl, line.nextSibling);
+            } catch (lineErr) {
+                warn('Failed to process line for synced mode', index, ':', lineErr);
+            }
+        });
+        
+    } catch (err) {
+        warn('Failed to apply synced mode:', err);
+    }
+}
+
+function updateSyncedWordStates(doc: Document): void {
+    if (!isOverlayEnabled || !currentConfig.syncWordHighlight) return;
+    
+    const lyricsContainer = doc.querySelector('.SpicyLyricsScrollContainer');
+    const lyricsType = lyricsContainer?.getAttribute('data-lyrics-type') || 'Line';
+    
+    doc.querySelectorAll('.slt-sync-translation').forEach((transLine) => {
+        const transLineEl = transLine as HTMLElement;
+        const lineIndex = parseInt(transLineEl.dataset.lineIndex || '-1');
+        if (lineIndex < 0) return;
+        
+        const lines = getLyricLines(doc);
+        if (lineIndex >= lines.length) return;
+        
+        const originalLine = lines[lineIndex] as HTMLElement;
+        if (!originalLine) return;
+        
+        const isActive = isLineActive(originalLine);
+        transLine.classList.toggle('active', isActive);
+        
+        if (lyricsType === 'Line') {
+            const isSung = originalLine.classList.contains('Sung');
+            const isLineActiveClass = originalLine.classList.contains('Active');
+            
+            const gradientPos = originalLine.style.getPropertyValue('--gradient-position');
+            const blurRadius = originalLine.style.getPropertyValue('--text-shadow-blur-radius');
+            const shadowOpacity = originalLine.style.getPropertyValue('--text-shadow-opacity');
+            
+            if (gradientPos && gradientPos.trim()) {
+                transLineEl.style.setProperty('--gradient-position', gradientPos);
+            } else if (isSung) {
+                transLineEl.style.setProperty('--gradient-position', '100%');
+            } else if (!isLineActiveClass) {
+                transLineEl.style.setProperty('--gradient-position', '-20%');
+            }
+            
+            if (blurRadius && blurRadius.trim()) {
+                transLineEl.style.setProperty('--text-shadow-blur-radius', blurRadius);
+            }
+            if (shadowOpacity && shadowOpacity.trim()) {
+                transLineEl.style.setProperty('--text-shadow-opacity', shadowOpacity);
+                const opacityValue = parseFloat(shadowOpacity);
+                if (!isNaN(opacityValue)) {
+                    transLineEl.style.setProperty('--text-shadow-opacity-decimal', (opacityValue / 100).toString());
+                }
+            }
+            return;
+        }
+        
+        const transWords = transLine.querySelectorAll('.slt-sync-word');
+        const originalWords = originalLine.querySelectorAll('.word:not(.dot), .letterGroup .letter, .syllable');
+        
+        transWords.forEach((transWord) => {
+            const transWordEl = transWord as HTMLElement;
+            const originalIndex = parseInt(transWordEl.dataset.originalIndex || '0');
+            
+            if (originalIndex < originalWords.length) {
+                const originalWord = originalWords[originalIndex] as HTMLElement;
+                
+                const isSung = originalWord.classList.contains('Sung') || 
+                               originalWord.classList.contains('sung');
+                const isWordActive = originalWord.classList.contains('Active') ||
+                                    originalWord.classList.contains('active');
+                
+                transWord.classList.remove('slt-word-past', 'slt-word-active', 'slt-word-future');
+                
+                if (isSung) {
+                    transWord.classList.add('slt-word-past');
+                    transWordEl.style.setProperty('--gradient-position', '100%');
+                } else if (isWordActive) {
+                    transWord.classList.add('slt-word-active');
+                    const gradientPos = originalWord.style.getPropertyValue('--gradient-position');
+                    if (gradientPos && gradientPos.trim()) {
+                        transWordEl.style.setProperty('--gradient-position', gradientPos);
+                    }
+                } else {
+                    transWord.classList.add('slt-word-future');
+                    transWordEl.style.setProperty('--gradient-position', '-20%');
+                }
+                
+                const blurRadius = originalWord.style.getPropertyValue('--text-shadow-blur-radius');
+                const shadowOpacity = originalWord.style.getPropertyValue('--text-shadow-opacity');
+                
+                if (blurRadius && blurRadius.trim()) {
+                    transWordEl.style.setProperty('--text-shadow-blur-radius', blurRadius);
+                }
+                if (shadowOpacity && shadowOpacity.trim()) {
+                    const opacityValue = parseFloat(shadowOpacity);
+                    if (!isNaN(opacityValue)) {
+                        transWordEl.style.setProperty('--text-shadow-opacity-decimal', (opacityValue / 100).toString());
+                    }
+                    transWordEl.style.setProperty('--text-shadow-opacity', shadowOpacity);
+                }
+            }
+        });
+    });
+}
+
 function renderTranslations(doc: Document): void {
     if (!isOverlayEnabled || translationMap.size === 0) return;
     
@@ -269,6 +485,9 @@ function renderTranslations(doc: Document): void {
             break;
         case 'interleaved':
             applyInterleavedMode(doc);
+            break;
+        case 'synced':
+            applySyncedMode(doc);
             break;
     }
 }
@@ -304,25 +523,42 @@ function onActiveLineChanged(doc: Document): void {
     
     try {
         if (currentConfig.mode === 'interleaved') {
-            const lines = getLyricLines(doc);
-            if (!lines || lines.length === 0) return;
-        
-            const translations = doc.querySelectorAll('.slt-interleaved-translation');
-            translations.forEach((translationEl) => {
-                try {
-                    const lineIndex = parseInt((translationEl as HTMLElement).dataset.forLine || '-1', 10);
-                    if (lineIndex >= 0 && lineIndex < lines.length) {
-                        const line = lines[lineIndex];
-                        if (line) {
-                            const shouldBeActive = isLineActive(line);
-                            const isActive = translationEl.classList.contains('active');
-                            if (shouldBeActive !== isActive) {
-                                translationEl.classList.toggle('active', shouldBeActive);
-                            }
-                        }
-                    }
-                } catch (e) { }
-            });
+            if (!cachedLines) {
+                cachedLines = getLyricLines(doc);
+            }
+            
+            if (!cachedLines || cachedLines.length === 0) return;
+
+            if (!cachedTranslationMap) {
+                cachedTranslationMap = new Map();
+                const translationEls = doc.querySelectorAll('.slt-interleaved-translation');
+                translationEls.forEach(el => {
+                    const idx = parseInt((el as HTMLElement).dataset.forLine || '-1', 10);
+                    if (idx >= 0) cachedTranslationMap!.set(idx, el as HTMLElement);
+                });
+            }
+
+            let currentActiveIndex = -1;
+            for (let i = 0; i < cachedLines.length; i++) {
+                if (isLineActive(cachedLines[i])) {
+                    currentActiveIndex = i;
+                    break;
+                }
+            }
+
+            if (currentActiveIndex !== lastActiveIndex) {
+                if (lastActiveIndex !== -1) {
+                    const oldEl = cachedTranslationMap.get(lastActiveIndex);
+                    if (oldEl) oldEl.classList.remove('active');
+                }
+
+                if (currentActiveIndex !== -1) {
+                    const newEl = cachedTranslationMap.get(currentActiveIndex);
+                    if (newEl) newEl.classList.add('active');
+                }
+
+                lastActiveIndex = currentActiveIndex;
+            }
         }
     } catch (err) { }
 }
@@ -338,6 +574,7 @@ function startActiveSyncInterval(): void {
         
         try {
             onActiveLineChanged(document);
+            updateSyncedWordStates(document);
             
             const pipWindow = getPIPWindow();
             if (pipWindow) {
@@ -345,6 +582,7 @@ function startActiveSyncInterval(): void {
                     const pipDoc = pipWindow.document;
                     if (pipDoc && pipDoc.body) {
                         onActiveLineChanged(pipDoc);
+                        updateSyncedWordStates(pipDoc);
                         
                         if (!activeLineObservers.has(pipDoc)) {
                             setupActiveLineObserver(pipDoc);
@@ -400,25 +638,24 @@ function setupActiveLineObserver(doc: Document): void {
         const observer = new MutationObserver((mutations) => {
             try {
                 let activeChanged = false;
+                let structureChanged = false;
                 
                 for (const mutation of mutations) {
-                    if (mutation.type === 'attributes') {
+                    if (mutation.type === 'childList') {
+                        structureChanged = true;
+                        if (mutation.addedNodes.length > 0) activeChanged = true;
+                    } else if (mutation.type === 'attributes') {
                         const target = mutation.target as HTMLElement;
                         if (target && (target.classList?.contains('line') || target.closest?.('.line'))) {
                             activeChanged = true;
-                            break;
                         }
                     }
-                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                        const hasLineChange = Array.from(mutation.addedNodes).some(node => 
-                            node.nodeType === Node.ELEMENT_NODE && 
-                            ((node as Element).classList?.contains('line') || (node as Element).querySelector?.('.line'))
-                        );
-                        if (hasLineChange) {
-                            activeChanged = true;
-                            break;
-                        }
-                    }
+                }
+
+                if (structureChanged) {
+                    cachedLines = null;
+                    cachedTranslationMap = null;
+                    lastActiveIndex = -1;
                 }
                 
                 if (activeChanged) {
@@ -493,6 +730,7 @@ export function disableOverlay(): void {
         if (interleavedOverlay) interleavedOverlay.remove();
         
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
+        doc.querySelectorAll('.slt-sync-translation').forEach(el => el.remove());
         doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         
         doc.querySelectorAll('.spicy-hidden-original').forEach(el => {
@@ -512,6 +750,10 @@ export function disableOverlay(): void {
         
         doc.querySelectorAll('.slt-overlay-parent, .spicy-translated').forEach(el => {
             el.classList.remove('slt-overlay-parent', 'spicy-translated');
+        });
+        
+        doc.querySelectorAll('.slt-sync-word').forEach(el => {
+            el.classList.remove('slt-word-past', 'slt-word-active', 'slt-word-future');
         });
     };
     
@@ -575,11 +817,15 @@ export function getOverlayConfig(): OverlayConfig {
 export function setOverlayConfig(config: Partial<OverlayConfig>): void {
     const wasEnabled = isOverlayEnabled;
     
+    const savedTranslations = new Map(translationMap);
+    
     if (wasEnabled) {
         disableOverlay();
     }
     
     currentConfig = { ...currentConfig, ...config };
+    
+    translationMap = savedTranslations;
     
     if (wasEnabled) {
         enableOverlay();

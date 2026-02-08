@@ -385,7 +385,10 @@ function applyTranslations(lines: NodeListOf<Element>): void {
         });
         
         if (!isOverlayActive()) {
-            enableOverlay({ mode: state.overlayMode });
+            enableOverlay({ 
+                mode: state.overlayMode,
+                syncWordHighlight: state.syncWordHighlight
+            });
         }
         updateOverlayContent(translationMapByIndex);
         return;

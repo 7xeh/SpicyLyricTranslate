@@ -8,11 +8,13 @@ import {
     enableOverlay, 
     disableOverlay, 
     updateOverlayContent, 
-    isOverlayActive 
+    isOverlayActive,
+    setLineTimingData
 } from './translationOverlay';
 import { shouldSkipTranslation } from './languageDetection';
 import { openSettingsModal } from './settings';
 import { debug, warn, error } from './debug';
+import { fetchLyricsFromAPI, clearLyricsCache, LyricLineData } from './lyricsFetcher';
 
 let viewControlsObserver: MutationObserver | null = null;
 let lyricsObserver: MutationObserver | null = null;
@@ -246,19 +248,21 @@ function getLyricsLines(): NodeListOf<Element> {
     const pip = getPIPWindow();
     if (pip) docs.push(pip.document);
 
+    const excludeSelector = ':not(.musical-line):not(.bg-line)';
+
     for (const doc of docs) {
-        const scrollContainer = doc.querySelectorAll('#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
+        const scrollContainer = doc.querySelectorAll(`#SpicyLyricsPage .SpicyLyricsScrollContainer .line${excludeSelector}`);
         if (scrollContainer.length > 0) return scrollContainer;
         
-        const lyricsContent = doc.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+        const lyricsContent = doc.querySelectorAll(`#SpicyLyricsPage .LyricsContent .line${excludeSelector}`);
         if (lyricsContent.length > 0) return lyricsContent;
         
         if (doc.body.classList.contains('SpicySidebarLyrics__Active')) {
-            const sidebar = doc.querySelectorAll('.Root__right-sidebar #SpicyLyricsPage .line:not(.musical-line)');
+            const sidebar = doc.querySelectorAll(`.Root__right-sidebar #SpicyLyricsPage .line${excludeSelector}`);
             if (sidebar.length > 0) return sidebar;
         }
         
-        const generic = doc.querySelectorAll('.LyricsContent .line:not(.musical-line), .LyricsContainer .line:not(.musical-line)');
+        const generic = doc.querySelectorAll(`.LyricsContent .line${excludeSelector}, .LyricsContainer .line${excludeSelector}`);
         if (generic.length > 0) return generic;
     }
     
@@ -320,8 +324,101 @@ export async function translateCurrentLyrics(): Promise<void> {
     });
     
     try {
-        const lineTexts: string[] = [];
-        lines.forEach(line => lineTexts.push(extractLineText(line)));
+        let apiLineTexts: string[] | null = null;
+        let apiLanguage: string | undefined;
+        let apiLineData: LyricLineData[] | null = null;
+        try {
+            const apiResult = await fetchLyricsFromAPI();
+            if (apiResult && apiResult.lines.length > 0) {
+                apiLineTexts = apiResult.lines;
+                apiLanguage = apiResult.language;
+                apiLineData = apiResult.lineData;
+                debug(`Got ${apiLineTexts.length} lines from SpicyLyrics API (DOM has ${lines.length} lines)`);
+            }
+        } catch (apiErr) {
+            warn('SpicyLyrics API fetch failed, falling back to DOM:', apiErr);
+        }
+        
+        let domLineTexts: string[] = [];
+        lines.forEach(line => domLineTexts.push(extractLineText(line)));
+        
+        let apiVocalTexts: string[] | null = null;
+        let apiVocalLineData: LyricLineData[] | null = null;
+        if (apiLineTexts && apiLineData) {
+            apiVocalTexts = [];
+            apiVocalLineData = [];
+            for (let i = 0; i < apiLineData.length; i++) {
+                if (!apiLineData[i].isInstrumental && apiLineTexts[i].trim().length > 0) {
+                    apiVocalTexts.push(apiLineTexts[i]);
+                    apiVocalLineData.push(apiLineData[i]);
+                }
+            }
+            debug(`API: ${apiLineTexts.length} total, ${apiVocalTexts.length} vocal (DOM: ${lines.length})`);
+        }
+        
+        let useApiLines = apiVocalTexts && apiVocalTexts.length === lines.length;
+        
+        if (!useApiLines && apiVocalTexts && apiVocalTexts.length > 0) {
+            for (let retryAttempt = 0; retryAttempt < 8; retryAttempt++) {
+                await new Promise(resolve => setTimeout(resolve, 600));
+                lines = getLyricsLines();
+                if (lines.length === 0) break;
+                
+                domLineTexts = [];
+                lines.forEach(line => domLineTexts.push(extractLineText(line)));
+                
+                if (apiVocalTexts.length === lines.length) {
+                    useApiLines = true;
+                    debug(`DOM refreshed on retry ${retryAttempt + 1}: count now matches (${lines.length})`);
+                    break;
+                }
+                
+                const apiTextSet = new Set(apiVocalTexts.map(t => t.trim().toLowerCase()));
+                const domMatchCount = domLineTexts.filter(t => apiTextSet.has(t.trim().toLowerCase())).length;
+                if (domMatchCount > domLineTexts.length * 0.3) {
+                    debug(`DOM refreshed on retry ${retryAttempt + 1}: ${domMatchCount}/${domLineTexts.length} text matches`);
+                    break;
+                }
+            }
+        }
+        
+        let matchedTimingData: LyricLineData[] | null = null;
+        if (!useApiLines && apiVocalTexts && apiVocalLineData && apiVocalTexts.length > 0) {
+            const apiTextMap = new Map<string, LyricLineData>();
+            for (let i = 0; i < apiVocalTexts.length; i++) {
+                const norm = apiVocalTexts[i].trim().toLowerCase();
+                if (norm && !apiTextMap.has(norm)) {
+                    apiTextMap.set(norm, apiVocalLineData[i]);
+                }
+            }
+            
+            matchedTimingData = [];
+            let matchCount = 0;
+            for (let i = 0; i < domLineTexts.length; i++) {
+                const domNorm = domLineTexts[i].trim().toLowerCase();
+                const matched = apiTextMap.get(domNorm);
+                if (matched) {
+                    matchedTimingData.push(matched);
+                    matchCount++;
+                } else {
+                    matchedTimingData.push({
+                        text: domLineTexts[i],
+                        startTime: 0,
+                        endTime: 0,
+                        isInstrumental: false,
+                    });
+                }
+            }
+            debug(`Text-based matching: ${matchCount}/${domLineTexts.length} DOM lines matched to API timing data`);
+        }
+        
+        const lineTexts = useApiLines ? apiVocalTexts! : domLineTexts;
+        
+        if (useApiLines) {
+            debug('Using SpicyLyrics API vocal lines for translation');
+        } else if (apiVocalTexts) {
+            debug(`API vocal count (${apiVocalTexts.length}) != DOM count (${lines.length}), using DOM with text-matched timing`);
+        }
         
         const nonEmptyTexts = lineTexts.filter(t => t.trim().length > 0);
         if (nonEmptyTexts.length === 0) {
@@ -331,6 +428,7 @@ export async function translateCurrentLyrics(): Promise<void> {
         }
         
         const currentTrackUri = getCurrentTrackUri();
+        const detectedLang = apiLanguage || state.detectedLanguage || undefined;
         const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri || undefined);
         
         if (skipCheck.detectedLanguage) state.detectedLanguage = skipCheck.detectedLanguage;
@@ -348,11 +446,31 @@ export async function translateCurrentLyrics(): Promise<void> {
         const translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri || undefined, state.detectedLanguage || undefined);
         
         state.translatedLyrics.clear();
+        
         translations.forEach((result, index) => {
-            state.translatedLyrics.set(lineTexts[index], result.translatedText);
+            const domText = domLineTexts[index];
+            if (domText) {
+                state.translatedLyrics.set(domText, result.translatedText);
+            }
+            if (useApiLines && lineTexts[index] !== domText) {
+                state.translatedLyrics.set(lineTexts[index], result.translatedText);
+            }
+        });
+        
+        state._translationsByIndex = new Map();
+        translations.forEach((result, index) => {
+            state._translationsByIndex!.set(index, result.translatedText);
         });
         
         state.lastTranslatedSongUri = currentTrackUri;
+        
+        if (useApiLines && apiVocalLineData) {
+            setLineTimingData(apiVocalLineData);
+        } else if (matchedTimingData) {
+            setLineTimingData(matchedTimingData);
+        } else if (apiLineData) {
+            setLineTimingData(apiLineData);
+        }
         
         applyTranslations(lines);
         
@@ -374,71 +492,44 @@ export async function translateCurrentLyrics(): Promise<void> {
 }
 
 function applyTranslations(lines: NodeListOf<Element>): void {
-    if (state.overlayMode === 'interleaved') {
-        const translationMapByIndex = new Map<number, string>();
-        lines.forEach((line, index) => {
-            const originalText = extractLineText(line);
-            const translatedText = state.translatedLyrics.get(originalText);
-            if (translatedText && translatedText !== originalText) {
-                translationMapByIndex.set(index, translatedText);
-            }
-        });
-        
-        if (!isOverlayActive()) {
-            enableOverlay({ 
-                mode: state.overlayMode,
-                syncWordHighlight: state.syncWordHighlight
-            });
-        }
-        updateOverlayContent(translationMapByIndex);
-        return;
-    }
-    
+    const translationMapByIndex = new Map<number, string>();
     lines.forEach((line, index) => {
+        let translatedText = state._translationsByIndex?.get(index);
+        if (!translatedText) {
+            const originalText = extractLineText(line);
+            translatedText = state.translatedLyrics.get(originalText);
+        }
         const originalText = extractLineText(line);
-        const translatedText = state.translatedLyrics.get(originalText);
-        
         if (translatedText && translatedText !== originalText) {
-            const existingTranslation = line.querySelector('.spicy-translation-container');
-            if (existingTranslation) existingTranslation.remove();
-            
-            restoreLineText(line);
-            
-            (line as HTMLElement).dataset.originalText = originalText;
-            (line as HTMLElement).dataset.lineIndex = index.toString();
-            line.classList.add('spicy-translated');
-            
-            const contentNodes = line.querySelectorAll('.word, .syllable, .letterGroup');
-            if (contentNodes.length > 0) {
-                contentNodes.forEach(el => el.classList.add('spicy-hidden-original'));
-            } else {
-                const wrapper = document.createElement('span');
-                wrapper.className = 'spicy-original-wrapper spicy-hidden-original';
-                wrapper.innerHTML = line.innerHTML;
-                line.innerHTML = '';
-                line.appendChild(wrapper);
-            }
-            
-            const translationSpan = document.createElement('span');
-            translationSpan.className = 'spicy-translation-container spicy-translation-text';
-            translationSpan.textContent = translatedText;
-            line.appendChild(translationSpan);
+            translationMapByIndex.set(index, translatedText);
         }
     });
+    
+    if (!isOverlayActive()) {
+        enableOverlay({ 
+            mode: state.overlayMode,
+            syncWordHighlight: state.syncWordHighlight
+        });
+    }
+    updateOverlayContent(translationMapByIndex);
 }
 
-function restoreLineText(line: Element): void {
-    const hiddenElements = line.querySelectorAll('.spicy-hidden-original');
-    hiddenElements.forEach(el => el.classList.remove('spicy-hidden-original'));
+export function reapplyTranslations(): void {
+    if (state.translatedLyrics.size === 0) return;
     
-    const translationTexts = line.querySelectorAll('.spicy-translation-container');
-    translationTexts.forEach(el => el.remove());
+    const savedTranslations = new Map(state.translatedLyrics);
+    const savedIndexMap = state._translationsByIndex ? new Map(state._translationsByIndex) : undefined;
+    const savedUri = state.lastTranslatedSongUri;
     
-    const wrapper = line.querySelector('.spicy-original-wrapper');
-    if (wrapper) {
-        const originalContent = wrapper.innerHTML;
-        wrapper.remove();
-        if (line.innerHTML.trim() === '') line.innerHTML = originalContent;
+    removeTranslations();
+    
+    state.translatedLyrics = savedTranslations;
+    state._translationsByIndex = savedIndexMap;
+    state.lastTranslatedSongUri = savedUri;
+    
+    const lines = getLyricsLines();
+    if (lines.length > 0) {
+        applyTranslations(lines);
     }
 }
 
@@ -450,6 +541,29 @@ export function removeTranslations(): void {
     if (pip) docs.push(pip.document);
     
     docs.forEach(doc => {
+        doc.querySelectorAll('[data-slt-original-html]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalHtml;
+            if (original !== undefined) {
+                el.innerHTML = original;
+                delete (el as HTMLElement).dataset.sltOriginalHtml;
+            }
+        });
+        
+        doc.querySelectorAll('[data-slt-original-text]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalText;
+            if (original !== undefined) {
+                el.textContent = original;
+                delete (el as HTMLElement).dataset.sltOriginalText;
+            }
+        });
+        
+        doc.querySelectorAll('[data-slt-replaced-with]').forEach(el => {
+            delete (el as HTMLElement).dataset.sltReplacedWith;
+        });
+        
+        doc.querySelectorAll('.slt-replace-line').forEach(el => el.remove());
+        doc.querySelectorAll('.slt-replace-hidden').forEach(el => el.classList.remove('slt-replace-hidden'));
+        
         doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
         doc.querySelectorAll('.spicy-hidden-original').forEach(el => el.classList.remove('spicy-hidden-original'));
@@ -466,6 +580,7 @@ export function removeTranslations(): void {
     });
     
     state.translatedLyrics.clear();
+    state._translationsByIndex = undefined;
 }
 
 export function setupLyricsObserver(): void {

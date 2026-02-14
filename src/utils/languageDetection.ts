@@ -1,6 +1,5 @@
 
 
-import storage from './storage';
 import { debug, warn } from './debug';
 
 
@@ -8,27 +7,27 @@ const detectionCache: Map<string, { language: string; confidence: number; timest
 const DETECTION_CACHE_TTL = 30 * 60 * 1000;  
 
 
-const LANGUAGE_PATTERNS: { code: string; patterns: RegExp[]; scripts?: RegExp }[] = [
+const LANGUAGE_PATTERNS: { code: string; scripts: RegExp }[] = [
     
-    { code: 'ja', patterns: [/[\u3040-\u309F]/, /[\u30A0-\u30FF]/], scripts: /[\u3040-\u30FF\u4E00-\u9FAF]/ },  
-    { code: 'zh', patterns: [/[\u4E00-\u9FFF]/], scripts: /[\u4E00-\u9FFF]/ },  
-    { code: 'ko', patterns: [/[\uAC00-\uD7AF]/, /[\u1100-\u11FF]/], scripts: /[\uAC00-\uD7AF\u1100-\u11FF]/ },  
-    
-    
-    { code: 'ar', patterns: [/[\u0600-\u06FF]/], scripts: /[\u0600-\u06FF]/ },
-    { code: 'he', patterns: [/[\u0590-\u05FF]/], scripts: /[\u0590-\u05FF]/ },
+    { code: 'ja', scripts: /[\u3040-\u30FF\u4E00-\u9FAF]/ },
+    { code: 'zh', scripts: /[\u4E00-\u9FFF]/ },
+    { code: 'ko', scripts: /[\uAC00-\uD7AF\u1100-\u11FF]/ },
     
     
-    { code: 'ru', patterns: [/[\u0400-\u04FF]/], scripts: /[\u0400-\u04FF]/ },
+    { code: 'ar', scripts: /[\u0600-\u06FF]/ },
+    { code: 'he', scripts: /[\u0590-\u05FF]/ },
     
     
-    { code: 'th', patterns: [/[\u0E00-\u0E7F]/], scripts: /[\u0E00-\u0E7F]/ },
+    { code: 'ru', scripts: /[\u0400-\u04FF]/ },
     
     
-    { code: 'hi', patterns: [/[\u0900-\u097F]/], scripts: /[\u0900-\u097F]/ },
+    { code: 'th', scripts: /[\u0E00-\u0E7F]/ },
     
     
-    { code: 'el', patterns: [/[\u0370-\u03FF]/], scripts: /[\u0370-\u03FF]/ },
+    { code: 'hi', scripts: /[\u0900-\u097F]/ },
+    
+    
+    { code: 'el', scripts: /[\u0370-\u03FF]/ },
 ];
 
 
@@ -43,14 +42,55 @@ const LATIN_LANGUAGE_WORDS: { code: string; words: string[] }[] = [
     { code: 'en', words: ['the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'i', 'you', 'he', 'she', 'it', 'we', 'they'] },
 ];
 
+const LATIN_LANGUAGE_WORD_SETS: { code: string; words: Set<string> }[] = LATIN_LANGUAGE_WORDS.map(lang => ({
+    code: lang.code,
+    words: new Set(lang.words)
+}));
+
+function getSampleIndices(length: number): number[] {
+    if (length <= 0) return [];
+
+    const indices = new Set<number>();
+
+    for (let i = 0; i < Math.min(5, length); i++) {
+        indices.add(i);
+    }
+
+    const middle = Math.floor(length / 2);
+    for (let i = middle - 2; i <= middle + 2; i++) {
+        if (i >= 0 && i < length) {
+            indices.add(i);
+        }
+    }
+
+    for (let i = Math.max(0, length - 5); i < length; i++) {
+        indices.add(i);
+    }
+
+    return [...indices].sort((a, b) => a - b);
+}
+
+function buildSampleText(lines: string[]): string {
+    const indices = getSampleIndices(lines.length);
+    return indices
+        .map(i => lines[i])
+        .filter(line => line && line.trim().length > 0 && !/^[•♪♫\s\-–—]+$/.test(line.trim()))
+        .join(' ');
+}
+
+function tokenizeWords(text: string): string[] {
+    const matches = text.toLowerCase().match(/[\p{L}']+/gu);
+    if (!matches) return [];
+    return matches.filter(word => word.length > 1);
+}
+
 
 export function detectLanguageHeuristic(text: string): { code: string; confidence: number } | null {
     if (!text || text.length < 10) {
         return null;
     }
     
-    const normalizedText = text.toLowerCase().trim();
-    
+    const normalizedText = text.trim();
     
     let totalChars = 0;
     const scriptCounts: { [code: string]: number } = {};
@@ -60,40 +100,48 @@ export function detectLanguageHeuristic(text: string): { code: string; confidenc
         totalChars++;
         
         for (const lang of LANGUAGE_PATTERNS) {
-            if (lang.scripts?.test(char)) {
+            if (lang.scripts.test(char)) {
                 scriptCounts[lang.code] = (scriptCounts[lang.code] || 0) + 1;
             }
         }
     }
     
+    if (totalChars === 0) return null;
     
-    for (const [code, count] of Object.entries(scriptCounts)) {
-        const ratio = count / totalChars;
-        if (ratio > 0.3) {  
-            
-            if (code === 'zh') {
-                
-                const japaneseKana = (normalizedText.match(/[\u3040-\u30FF]/g) || []).length;
-                if (japaneseKana > 0) {
-                    return { code: 'ja', confidence: 0.85 };
-                }
+    const dominantScript = Object.entries(scriptCounts)
+        .map(([code, count]) => ({ code, count, ratio: count / totalChars }))
+        .sort((a, b) => b.count - a.count)[0];
+
+    if (dominantScript && dominantScript.ratio > 0.2) {
+        if (dominantScript.code === 'zh') {
+            const japaneseKana = (normalizedText.match(/[\u3040-\u30FF]/g) || []).length;
+            if (japaneseKana > 0) {
+                return { code: 'ja', confidence: 0.9 };
             }
-            return { code, confidence: Math.min(0.95, 0.5 + ratio) };
         }
+
+        return {
+            code: dominantScript.code,
+            confidence: Math.min(0.95, 0.6 + dominantScript.ratio * 0.3)
+        };
     }
     
-    
-    const words = normalizedText.split(/\s+/).filter(w => w.length > 1);
+    const words = tokenizeWords(normalizedText);
     if (words.length < 5) {
-        return null;  
+        return null;
     }
     
     const wordCounts: { [code: string]: number } = {};
     let maxCount = 0;
     let maxLang = 'en';
     
-    for (const lang of LATIN_LANGUAGE_WORDS) {
-        const count = words.filter(w => lang.words.includes(w)).length;
+    for (const lang of LATIN_LANGUAGE_WORD_SETS) {
+        let count = 0;
+        for (const word of words) {
+            if (lang.words.has(word)) {
+                count++;
+            }
+        }
         wordCounts[lang.code] = count;
         
         if (count > maxCount) {
@@ -102,11 +150,9 @@ export function detectLanguageHeuristic(text: string): { code: string; confidenc
         }
     }
     
-    
     const matchRatio = maxCount / words.length;
     
     if (matchRatio > 0.15 && maxCount >= 3) {
-        
         const sortedCounts = Object.entries(wordCounts)
             .sort((a, b) => b[1] - a[1]);
         
@@ -115,15 +161,21 @@ export function detectLanguageHeuristic(text: string): { code: string; confidenc
         }
     }
     
-    return null;  
+    return null;
 }
 
 
 async function detectLanguageViaAPI(text: string): Promise<{ code: string; confidence: number }> {
     const sample = text.slice(0, 500);
-    const encodedText = encodeURIComponent(sample);
-    
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodedText}`;
+    const params = new URLSearchParams({
+        client: 'gtx',
+        sl: 'auto',
+        tl: 'en',
+        dt: 't',
+        q: sample
+    });
+
+    const url = `https://translate.googleapis.com/translate_a/single?${params.toString()}`;
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -131,7 +183,7 @@ async function detectLanguageViaAPI(text: string): Promise<{ code: string; confi
     }
     
     const data = await response.json();
-    const detectedLang = data[2] || 'unknown';
+    const detectedLang = typeof data?.[2] === 'string' ? data[2] : 'unknown';
     
     
     const confidence = detectedLang !== 'unknown' ? 0.9 : 0.5;
@@ -154,17 +206,7 @@ export async function detectLyricsLanguage(
     }
     
     
-    const sampleIndices = [
-        0, 1, 2,  
-        Math.floor(lyrics.length / 2),  
-        Math.floor(lyrics.length / 2) + 1,
-        lyrics.length - 3, lyrics.length - 2, lyrics.length - 1  
-    ].filter(i => i >= 0 && i < lyrics.length);
-    
-    const sampleText = sampleIndices
-        .map(i => lyrics[i])
-        .filter(line => line && line.trim().length > 0 && !/^[•\s]+$/.test(line))
-        .join(' ');
+    const sampleText = buildSampleText(lyrics);
     
     if (sampleText.length < 20) {
         return { code: 'unknown', confidence: 0 };
@@ -227,14 +269,30 @@ export async function shouldSkipTranslation(
     targetLanguage: string,
     trackUri?: string
 ): Promise<{ skip: boolean; reason?: string; detectedLanguage?: string }> {
-    
-    const detection = await detectLyricsLanguage(lyrics, trackUri);
-    
-    if (detection.code === 'unknown' || detection.confidence < 0.5) {
-        
+    const nonEmptyLyrics = lyrics.filter(l => l && l.trim().length > 0 && !/^[•♪♫\s\-–—]+$/.test(l.trim()));
+    if (nonEmptyLyrics.length === 0) {
         return { skip: false };
     }
     
+    const sampleText = buildSampleText(nonEmptyLyrics);
+    const quickHeuristic = detectLanguageHeuristic(sampleText);
+    
+    if (quickHeuristic && quickHeuristic.confidence >= 0.8) {
+        if (isSameLanguage(quickHeuristic.code, targetLanguage)) {
+            return {
+                skip: true,
+                reason: `Lyrics already in ${quickHeuristic.code.toUpperCase()}`,
+                detectedLanguage: quickHeuristic.code
+            };
+        }
+        return { skip: false, detectedLanguage: quickHeuristic.code };
+    }
+    
+    const detection = await detectLyricsLanguage(lyrics, trackUri);
+    
+    if (detection.code === 'unknown' || detection.confidence < 0.6) {
+        return { skip: false };
+    }
     
     if (isSameLanguage(detection.code, targetLanguage)) {
         return {

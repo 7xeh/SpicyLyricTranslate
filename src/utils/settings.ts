@@ -4,7 +4,8 @@ import { SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './t
 import { debug, info, isDebugEnabled, setDebugMode } from './debug';
 import { getTrackCacheStats, getAllCachedTracks, deleteTrackCache, clearAllTrackCache } from './trackCache';
 import { VERSION, REPO_URL, checkForUpdates, getUpdateInfo } from './updater';
-import { OverlayMode, setOverlayConfig } from './translationOverlay';
+import { OverlayMode } from './translationOverlay';
+import { reapplyTranslations } from './core';
 
 const SETTINGS_ID = 'spicy-lyric-translater-settings';
 
@@ -106,7 +107,7 @@ function createNativeSettingsSection(): HTMLElement {
             const mode = value as OverlayMode;
             storage.set('overlay-mode', mode);
             state.overlayMode = mode;
-            setOverlayConfig({ mode });
+            reapplyTranslations();
         }
     ));
     
@@ -571,7 +572,7 @@ function createSettingsUI(): HTMLElement {
             const mode = overlayModeSelect.value as OverlayMode;
             storage.set('overlay-mode', mode);
             state.overlayMode = mode;
-            setOverlayConfig({ mode });
+            reapplyTranslations();
         });
         
         preferredApiSelect?.addEventListener('change', () => {

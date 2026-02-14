@@ -1,6 +1,7 @@
 import { state } from './state';
 import { storage } from './storage';
 import { setPreferredApi, clearTranslationCache, getCacheStats, getCachedTranslations, deleteCachedTranslation } from './translator';
+import { clearLyricsCache } from './lyricsFetcher';
 import { injectStyles } from '../styles/main';
 import { registerSettings } from './settings';
 import { initConnectionIndicator, getConnectionState, refreshConnection } from './connectivity';
@@ -55,9 +56,11 @@ export async function initialize(): Promise<void> {
         Spicetify.Player.addEventListener('songchange', () => {
             state.isTranslating = false;
             state.translatedLyrics.clear();
+            state._translationsByIndex = undefined;
+            clearLyricsCache();
             removeTranslations();
             
-            if (state.autoTranslate) {
+            if (state.isEnabled || state.autoTranslate) {
                 if (!state.isEnabled) {
                     state.isEnabled = true;
                     storage.set('translation-enabled', 'true');

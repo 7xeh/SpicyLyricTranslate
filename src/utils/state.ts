@@ -16,6 +16,7 @@ export interface ExtensionState {
     overlayMode: OverlayMode;
     detectedLanguage: string | null;
     syncWordHighlight: boolean;
+    _translationsByIndex?: Map<number, string>;
 }
 
 export const state: ExtensionState = {

@@ -361,13 +361,6 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
     }
 }
 
-function isSameLanguage(detected: string, target: string): boolean {
-    if (!detected || detected === 'unknown') return false;
-    const normalizedDetected = detected.toLowerCase().split('-')[0];
-    const normalizedTarget = target.toLowerCase().split('-')[0];
-    return normalizedDetected === normalizedTarget;
-}
-
 export async function translateText(text: string, targetLang: string): Promise<TranslationResult> {
     const cached = getCachedTranslation(text, targetLang);
     if (cached) {
@@ -415,17 +408,6 @@ export async function translateText(text: string, targetLang: string): Promise<T
     try {
         const result = await primaryApi();
         
-        if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-            cacheTranslation(text, targetLang, text, preferredApi);
-            return {
-                originalText: text,
-                translatedText: text,
-                detectedLanguage: result.detectedLang,
-                targetLanguage: targetLang,
-                wasTranslated: false
-            };
-        }
-        
         cacheTranslation(text, targetLang, result.translation, preferredApi);
         return {
             originalText: text,
@@ -440,17 +422,6 @@ export async function translateText(text: string, targetLang: string): Promise<T
         for (const fallbackApi of fallbackApis) {
             try {
                 const result = await fallbackApi.fn();
-                
-                if (result.detectedLang && isSameLanguage(result.detectedLang, targetLang)) {
-                    cacheTranslation(text, targetLang, text, fallbackApi.name);
-                    return {
-                        originalText: text,
-                        translatedText: text,
-                        detectedLanguage: result.detectedLang,
-                        targetLanguage: targetLang,
-                        wasTranslated: false
-                    };
-                }
                 
                 cacheTranslation(text, targetLang, result.translation, fallbackApi.name);
                 return {

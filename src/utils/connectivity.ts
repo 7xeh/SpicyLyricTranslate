@@ -269,7 +269,10 @@ async function connect(): Promise<boolean> {
         }
         throw new Error('Connection failed');
     } catch (error) {
-        console.warn('[SpicyLyricTranslater] Connection failed:', error);
+        const isAbortError = error instanceof Error && error.name === 'AbortError';
+        if (!isAbortError) {
+            console.warn('[SpicyLyricTranslater] Connection failed:', error);
+        }
         indicatorState.state = 'error';
         updateUI();
         

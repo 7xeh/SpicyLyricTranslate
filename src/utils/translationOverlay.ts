@@ -1,4 +1,5 @@
 import { debug, warn } from './debug';
+import type { LyricLineData, WordTimingData } from './lyricsFetcher';
 
 export type OverlayMode = 'replace' | 'interleaved' | 'synced';
 
@@ -18,6 +19,7 @@ let currentConfig: OverlayConfig = {
 
 let isOverlayEnabled = false;
 let translationMap: Map<number, string> = new Map();
+let lineTimingData: LyricLineData[] = [];
 
 let cachedLines: NodeListOf<Element> | null = null;
 let cachedTranslationMap: Map<number, HTMLElement> | null = null;
@@ -35,33 +37,34 @@ function getPIPWindow(): Window | null {
 
 function getLyricLines(doc: Document): NodeListOf<Element> {
     const isPipDoc = !!doc.querySelector('.spicy-pip-wrapper');
+    const excludeSelector = ':not(.musical-line):not(.bg-line)';
     
     if (isPipDoc) {
-        const pipLines = doc.querySelectorAll('.spicy-pip-wrapper #SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
+        const pipLines = doc.querySelectorAll(`.spicy-pip-wrapper #SpicyLyricsPage .SpicyLyricsScrollContainer .line${excludeSelector}`);
         if (pipLines.length > 0) return pipLines;
         
-        const pipLinesAlt = doc.querySelectorAll('.spicy-pip-wrapper .SpicyLyricsScrollContainer .line:not(.musical-line)');
+        const pipLinesAlt = doc.querySelectorAll(`.spicy-pip-wrapper .SpicyLyricsScrollContainer .line${excludeSelector}`);
         if (pipLinesAlt.length > 0) return pipLinesAlt;
         
-        const pipLinesFallback = doc.querySelectorAll('.spicy-pip-wrapper .line:not(.musical-line)');
+        const pipLinesFallback = doc.querySelectorAll(`.spicy-pip-wrapper .line${excludeSelector}`);
         if (pipLinesFallback.length > 0) return pipLinesFallback;
     }
     
-    const scrollContainerLines = doc.querySelectorAll('#SpicyLyricsPage .SpicyLyricsScrollContainer .line:not(.musical-line)');
+    const scrollContainerLines = doc.querySelectorAll(`#SpicyLyricsPage .SpicyLyricsScrollContainer .line${excludeSelector}`);
     if (scrollContainerLines.length > 0) return scrollContainerLines;
     
     if (doc.body?.classList?.contains('SpicySidebarLyrics__Active')) {
-        const sidebarLines = doc.querySelectorAll('.Root__right-sidebar #SpicyLyricsPage .line:not(.musical-line)');
+        const sidebarLines = doc.querySelectorAll(`.Root__right-sidebar #SpicyLyricsPage .line${excludeSelector}`);
         if (sidebarLines.length > 0) return sidebarLines;
     }
     
-    const compactLines = doc.querySelectorAll('#SpicyLyricsPage.ForcedCompactMode .line:not(.musical-line)');
+    const compactLines = doc.querySelectorAll(`#SpicyLyricsPage.ForcedCompactMode .line${excludeSelector}`);
     if (compactLines.length > 0) return compactLines;
 
-    const lyricsContentLines = doc.querySelectorAll('#SpicyLyricsPage .LyricsContent .line:not(.musical-line)');
+    const lyricsContentLines = doc.querySelectorAll(`#SpicyLyricsPage .LyricsContent .line${excludeSelector}`);
     if (lyricsContentLines.length > 0) return lyricsContentLines;
     
-    return doc.querySelectorAll('.SpicyLyricsScrollContainer .line:not(.musical-line), .LyricsContent .line:not(.musical-line), .LyricsContainer .line:not(.musical-line)');
+    return doc.querySelectorAll(`.SpicyLyricsScrollContainer .line${excludeSelector}, .LyricsContent .line${excludeSelector}, .LyricsContainer .line${excludeSelector}`);
 }
 
 function findLyricsContainer(doc: Document): Element | null {
@@ -94,17 +97,67 @@ function findLyricsContainer(doc: Document): Element | null {
 }
 
 function extractLineText(line: Element): string {
-    const words = line.querySelectorAll('.word:not(.dot), .syllable, .letterGroup');
-    if (words.length > 0) {
-        return Array.from(words).map(w => w.textContent?.trim() || '').join(' ').replace(/\s+/g, ' ').trim();
+    const wordGroups = line.querySelectorAll(':scope > .word-group');
+    const directWords = line.querySelectorAll(':scope > .word:not(.dot), :scope > .letterGroup');
+    
+    if (wordGroups.length > 0 || directWords.length > 0) {
+        const parts: string[] = [];
+        const children = line.children;
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child.classList.contains('word-group')) {
+                const groupText = child.textContent?.trim() || '';
+                if (groupText) parts.push(groupText);
+            } else if (child.classList.contains('letterGroup')) {
+                const groupText = child.textContent?.trim() || '';
+                if (groupText) parts.push(groupText);
+            } else if (child.classList.contains('word') && !child.classList.contains('dot')) {
+                const wordText = child.textContent?.trim() || '';
+                if (wordText) parts.push(wordText);
+            } else if (child.classList.contains('dotGroup')) {
+                continue;
+            }
+        }
+        
+        if (parts.length > 0) {
+            return parts.join(' ').replace(/\s+/g, ' ').trim();
+        }
     }
     
-    const letters = line.querySelectorAll('.letter');
-    if (letters.length > 0) {
-        return Array.from(letters).map(l => l.textContent || '').join('').trim();
+    const words = line.querySelectorAll('.word:not(.dot), .letterGroup');
+    if (words.length > 0) {
+        const wordUnits = Array.from(words).filter(w => {
+            if (w.classList.contains('letterGroup')) return true;
+            if (w.closest('.letterGroup')) return false;
+            return true;
+        });
+        return wordUnits.map(w => w.textContent?.trim() || '').join(' ').replace(/\s+/g, ' ').trim();
     }
     
     return line.textContent?.trim() || '';
+}
+
+function getWordUnits(line: Element): Element[] {
+    const units: Element[] = [];
+    const allElements = line.querySelectorAll('.word:not(.dot), .letterGroup, .syllable');
+    
+    for (const el of Array.from(allElements)) {
+        if (el.closest('.letterGroup') && !el.classList.contains('letterGroup')) {
+            continue;
+        }
+        let isNested = false;
+        for (const unit of units) {
+            if (unit.contains(el) && unit !== el) {
+                isNested = true;
+                break;
+            }
+        }
+        if (!isNested) {
+            units.push(el);
+        }
+    }
+    
+    return units;
 }
 
 function isLineActive(line: Element): boolean {
@@ -126,41 +179,193 @@ function isLineActive(line: Element): boolean {
 }
 
 function applyReplaceMode(doc: Document): void {
+    cachedLines = null;
+    cachedTranslationMap = null;
+    lastActiveIndex = -1;
+
     const lines = getLyricLines(doc);
     
+    doc.querySelectorAll('.slt-replace-line').forEach(el => el.remove());
+    doc.querySelectorAll('.slt-replace-hidden').forEach(el => el.classList.remove('slt-replace-hidden'));
+    
+    const lyricsContainer = doc.querySelector('.SpicyLyricsScrollContainer');
+    const lyricsType = lyricsContainer?.getAttribute('data-lyrics-type') || 'Line';
+    
     lines.forEach((line, index) => {
-        const existingTranslation = line.querySelector('.spicy-translation-container');
-        if (existingTranslation) existingTranslation.remove();
-        
         const translation = translationMap.get(index);
         if (!translation) return;
         
         const originalText = extractLineText(line);
         if (translation === originalText) return;
         
-        line.classList.add('spicy-translated');
-        (line as HTMLElement).dataset.lineIndex = index.toString();
+        if (!line.parentNode) return;
         
-        const contentElements = line.querySelectorAll('.word, .syllable, .letterGroup, .word-group, .letter');
-        if (contentElements.length > 0) {
-            contentElements.forEach(el => el.classList.add('spicy-hidden-original'));
+        line.classList.add('slt-replace-hidden');
+        (line as HTMLElement).dataset.sltIndex = index.toString();
+        
+        const replaceEl = doc.createElement('div');
+        replaceEl.className = 'slt-replace-line slt-sync-translation';
+        replaceEl.dataset.lineIndex = index.toString();
+        replaceEl.dataset.forLine = index.toString();
+        replaceEl.dataset.lyricsType = lyricsType;
+        
+        const isBreak = !originalText.trim() || /^[♪♫•\-–—\s]+$/.test(originalText.trim());
+        const timingInfo = lineTimingData[index];
+        const isInstrumental = timingInfo?.isInstrumental || isBreak;
+        
+        if (isInstrumental) {
+            replaceEl.textContent = '♪ ♪ ♪';
+            replaceEl.classList.add('slt-replace-instrumental');
         } else {
-            const existingWrapper = line.querySelector('.spicy-original-wrapper');
-            if (!existingWrapper) {
-                const originalContent = line.innerHTML;
-                const wrapper = document.createElement('span');
-                wrapper.className = 'spicy-original-wrapper spicy-hidden-original';
-                wrapper.innerHTML = originalContent;
-                line.innerHTML = '';
-                line.appendChild(wrapper);
+            if (currentConfig.syncWordHighlight) {
+                appendTranslationWordSpans(doc, replaceEl, translation, line, 'slt-replace-word');
+            } else {
+                replaceEl.textContent = translation;
             }
         }
         
-        const translationSpan = document.createElement('span');
-        translationSpan.className = 'spicy-translation-container spicy-translation-text';
-        translationSpan.textContent = translation;
-        line.appendChild(translationSpan);
+        if (timingInfo) {
+            replaceEl.dataset.startTime = timingInfo.startTime.toString();
+            replaceEl.dataset.endTime = timingInfo.endTime.toString();
+        }
+        
+        replaceEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            let seekTarget = replaceEl.dataset.startTime;
+            const clickedWord = (e.target as HTMLElement)?.closest?.('.slt-replace-word');
+            if (clickedWord) {
+                seekTarget = (clickedWord as HTMLElement).dataset.startTime || seekTarget;
+            }
+            
+            if (seekTarget !== undefined && seekTarget !== '') {
+                const timeSec = parseFloat(seekTarget);
+                if (!isNaN(timeSec) && timeSec >= 0) {
+                    const timeMs = Math.round(timeSec * 1000);
+                    try {
+                        const Spicetify = (globalThis as any).Spicetify;
+                        if (Spicetify?.Player?.origin?.seekTo) {
+                            Spicetify.Player.origin.seekTo(timeMs);
+                        } else if (Spicetify?.Player?.seek) {
+                            Spicetify.Player.seek(timeMs);
+                        }
+                    } catch (err) {
+                        warn('Failed to seek:', err);
+                    }
+                    return;
+                }
+            }
+            const firstWord = line.querySelector('.word:not(.dot)') || line.querySelector('.letterGroup');
+            if (firstWord) {
+                (firstWord as HTMLElement).click();
+            }
+        });
+        
+        if (isLineActive(line)) {
+            replaceEl.classList.add('active');
+        }
+        
+        line.parentNode.insertBefore(replaceEl, line.nextSibling);
     });
+}
+
+function appendTranslationWordSpans(
+    doc: Document,
+    container: HTMLElement,
+    translation: string,
+    originalLine: Element,
+    wordClassName: 'slt-sync-word' | 'slt-replace-word'
+): void {
+    const translatedWords = translation.trim().split(/\s+/).filter(Boolean);
+    if (translatedWords.length === 0) {
+        container.textContent = translation || '';
+        return;
+    }
+
+    const originalWords = getWordUnits(originalLine);
+    const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+
+    translatedWords.forEach((word, wordIndex) => {
+        const span = doc.createElement('span');
+        span.className = wordClassName;
+
+        if (wordClassName === 'slt-sync-word') {
+            span.classList.add('slt-word-future');
+        } else {
+            span.classList.add('word-notsng');
+        }
+
+        const originalIndex = originalWords.length > 0
+            ? Math.min(Math.floor(wordIndex / Math.max(ratio, 0.01)), originalWords.length - 1)
+            : wordIndex;
+
+        span.dataset.originalIndex = Math.max(0, originalIndex).toString();
+        span.dataset.wordIndex = wordIndex.toString();
+        span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
+        container.appendChild(span);
+    });
+}
+
+
+function getClickableWordElements(line: Element): Element[] {
+    const words = Array.from(line.querySelectorAll('.word:not(.dot)'));
+    return words.length > 0 ? words : Array.from(line.querySelectorAll('.letterGroup'));
+}
+
+export function distributeTranslationText(translationText: string, wordElements: Element[]): void {
+    const translationWords = translationText.split(/\s+/).filter(w => w.length > 0);
+    const numElements = wordElements.length;
+    const numTranslation = translationWords.length;
+    
+    if (numElements === 0) return;
+    
+    wordElements.forEach(el => {
+        if ((el as HTMLElement).dataset.sltOriginalHtml === undefined) {
+            (el as HTMLElement).dataset.sltOriginalHtml = el.innerHTML;
+        }
+    });
+    
+    if (numTranslation <= numElements) {
+        for (let i = 0; i < numElements; i++) {
+            if (i < numTranslation) {
+                wordElements[i].textContent = translationWords[i];
+            } else {
+                wordElements[i].textContent = '';
+            }
+        }
+    } else {
+        const wordsPerElement = Math.floor(numTranslation / numElements);
+        const extraWords = numTranslation % numElements;
+        let wordIdx = 0;
+        
+        for (let i = 0; i < numElements; i++) {
+            const count = wordsPerElement + (i < extraWords ? 1 : 0);
+            const chunk = translationWords.slice(wordIdx, wordIdx + count);
+            wordElements[i].textContent = chunk.join(' ');
+            wordIdx += count;
+        }
+    }
+}
+
+export function restoreReplacedLine(line: Element): void {
+    const modifiedElements = line.querySelectorAll('[data-slt-original-html]');
+    modifiedElements.forEach(el => {
+        const original = (el as HTMLElement).dataset.sltOriginalHtml;
+        if (original !== undefined) {
+            el.innerHTML = original;
+            delete (el as HTMLElement).dataset.sltOriginalHtml;
+        }
+    });
+    
+    const originalText = (line as HTMLElement).dataset.sltOriginalText;
+    if (originalText !== undefined) {
+        line.textContent = originalText;
+        delete (line as HTMLElement).dataset.sltOriginalText;
+    }
+    
+    delete (line as HTMLElement).dataset.sltReplacedWith;
+    line.classList.remove('spicy-translated');
 }
 
 let interleavedScrollHandler: (() => void) | null = null;
@@ -238,39 +443,19 @@ function applyInterleavedMode(doc: Document): void {
                 if (isBreak) {
                     translationEl.textContent = '• • •';
                     translationEl.classList.add('slt-music-break');
-                } else if (currentConfig.syncWordHighlight) {
+                } else {
                     translationEl.classList.add('slt-sync-translation');
-                    
-                    const lyricsContainer = doc.querySelector('.SpicyLyricsScrollContainer');
-                    const lyricsType = lyricsContainer?.getAttribute('data-lyrics-type') || 'Line';
-                    
-                    const originalWords = line.querySelectorAll('.word:not(.dot), .letterGroup .letter, .syllable');
-                    const translatedWords = translation?.trim().split(/\s+/) || [];
-                    
-                    debug(`Line ${index}: Type=${lyricsType}, Found ${originalWords.length} original words, ${translatedWords.length} translated words`);
-                    
-                    if (lyricsType === 'Syllable' && originalWords.length > 0 && translatedWords.length > 0) {
-                        const ratio = translatedWords.length / Math.max(originalWords.length, 1);
-                        
-                        translatedWords.forEach((word, wordIndex) => {
-                            const originalIndex = Math.min(
-                                Math.floor(wordIndex / Math.max(ratio, 0.01)),
-                                originalWords.length - 1
-                            );
-                            
-                            const span = doc.createElement('span');
-                            span.className = 'slt-sync-word slt-word-future';
-                            span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
-                            span.dataset.originalIndex = originalIndex.toString();
-                            span.dataset.wordIndex = wordIndex.toString();
-                            
-                            translationEl.appendChild(span);
-                        });
+                    if (currentConfig.syncWordHighlight && translation) {
+                        appendTranslationWordSpans(doc, translationEl, translation, line, 'slt-sync-word');
                     } else {
                         translationEl.textContent = translation || '';
                     }
-                } else {
-                    translationEl.textContent = translation || '';
+                }
+                
+                const timingInfo = lineTimingData[index];
+                if (timingInfo) {
+                    translationEl.dataset.startTime = timingInfo.startTime.toString();
+                    translationEl.dataset.endTime = timingInfo.endTime.toString();
                 }
                 
                 if (isLineActive(line)) translationEl.classList.add('active');
@@ -336,29 +521,7 @@ function applySyncedMode(doc: Document): void {
                     translationEl.textContent = '• • •';
                     translationEl.classList.add('slt-music-break');
                 } else if (currentConfig.syncWordHighlight) {
-                    const originalWords = line.querySelectorAll('.word:not(.dot), .syllable');
-                    const translatedWords = translation?.trim().split(/\s+/) || [];
-                    
-                    if (originalWords.length > 0 && translatedWords.length > 0) {
-                        const ratio = translatedWords.length / Math.max(originalWords.length, 1);
-                        
-                        translatedWords.forEach((word, wordIndex) => {
-                            const originalIndex = Math.min(
-                                Math.floor(wordIndex / Math.max(ratio, 0.01)),
-                                originalWords.length - 1
-                            );
-                            
-                            const span = doc.createElement('span');
-                            span.className = 'slt-sync-word slt-word-future';
-                            span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
-                            span.dataset.originalIndex = originalIndex.toString();
-                            span.dataset.wordIndex = wordIndex.toString();
-                            
-                            translationEl.appendChild(span);
-                        });
-                    } else {
-                        translationEl.textContent = translation || '';
-                    }
+                    appendTranslationWordSpans(doc, translationEl, translation || '', line, 'slt-sync-word');
                 } else {
                     translationEl.textContent = translation || '';
                 }
@@ -378,101 +541,324 @@ function applySyncedMode(doc: Document): void {
     }
 }
 
+const MIRRORED_LINE_STYLE_PROPS = [
+    '--gradient-position',
+    '--gradient-alpha',
+    '--gradient-alpha-end',
+    '--gradient-degrees',
+    '--gradient-offset',
+    '--BlurAmount',
+    '--text-shadow-blur-radius',
+    '--text-shadow-opacity',
+    '--active-line-distance'
+];
+
+function syncTranslationLineFromOriginal(
+    originalLine: HTMLElement,
+    translatedLine: HTMLElement,
+    lyricsType: string
+): void {
+    const isActive = isLineActive(originalLine);
+    const isSung = originalLine.classList.contains('Sung');
+    const isNotSung = originalLine.classList.contains('NotSung');
+
+    translatedLine.classList.toggle('active', isActive);
+    translatedLine.classList.toggle('Active', isActive);
+    translatedLine.classList.toggle('Sung', !isActive && isSung);
+    translatedLine.classList.toggle('NotSung', !isActive && isNotSung);
+    translatedLine.classList.toggle('OppositeAligned', originalLine.classList.contains('OppositeAligned'));
+    translatedLine.classList.toggle('rtl', originalLine.classList.contains('rtl'));
+
+    translatedLine.style.setProperty('--gradient-degrees', lyricsType === 'Line' ? '180deg' : '90deg');
+
+    for (const prop of MIRRORED_LINE_STYLE_PROPS) {
+        if (prop === '--gradient-degrees') continue;
+        const value = originalLine.style.getPropertyValue(prop);
+        if (value && value.trim() !== '') {
+            translatedLine.style.setProperty(prop, value);
+        } else {
+            translatedLine.style.removeProperty(prop);
+        }
+    }
+
+    if (!originalLine.style.getPropertyValue('--gradient-position')) {
+        if (isSung) {
+            translatedLine.style.setProperty('--gradient-position', '100%');
+        } else if (isNotSung) {
+            translatedLine.style.setProperty('--gradient-position', '-20%');
+        }
+    }
+}
+
+function getOverallWordGradientProgress(originalLine: HTMLElement): number | null {
+    const originalWords = getWordUnits(originalLine);
+    if (originalWords.length === 0) return null;
+
+    let sungCount = 0;
+    let activeWordIndex = -1;
+    let activeWordGradient = 0;
+
+    for (let i = 0; i < originalWords.length; i++) {
+        const wordEl = originalWords[i] as HTMLElement;
+        let gradientValue: number = NaN;
+
+        if (wordEl.classList.contains('letterGroup')) {
+            const letters = wordEl.querySelectorAll('.letter');
+            let maxGradient = -Infinity;
+            for (const letter of Array.from(letters)) {
+                const letterGradient = parseFloat(
+                    (letter as HTMLElement).style.getPropertyValue('--gradient-position')
+                );
+                if (!isNaN(letterGradient) && letterGradient > maxGradient) {
+                    maxGradient = letterGradient;
+                }
+            }
+            if (maxGradient > -Infinity) {
+                gradientValue = maxGradient;
+            }
+        } else {
+            gradientValue = parseFloat(wordEl.style.getPropertyValue('--gradient-position'));
+        }
+
+        if (!isNaN(gradientValue)) {
+            if (gradientValue >= 90) {
+                sungCount = i + 1;
+            } else if (gradientValue > -15) {
+                activeWordIndex = i;
+                activeWordGradient = Math.max(0, Math.min(1, (gradientValue + 20) / 120));
+            }
+        }
+    }
+
+    if (activeWordIndex >= 0) {
+        return (activeWordIndex + activeWordGradient) / originalWords.length;
+    }
+
+    return sungCount / originalWords.length;
+}
+
+function getOriginalWordGradients(originalLine: HTMLElement): number[] {
+    const originalWords = getWordUnits(originalLine);
+    const gradients: number[] = [];
+
+    for (let i = 0; i < originalWords.length; i++) {
+        const wordEl = originalWords[i] as HTMLElement;
+        let gradientValue: number = NaN;
+
+        if (wordEl.classList.contains('letterGroup')) {
+            const letters = wordEl.querySelectorAll('.letter');
+            let maxGradient = -Infinity;
+            for (const letter of Array.from(letters)) {
+                const letterGradient = parseFloat(
+                    (letter as HTMLElement).style.getPropertyValue('--gradient-position')
+                );
+                if (!isNaN(letterGradient) && letterGradient > maxGradient) {
+                    maxGradient = letterGradient;
+                }
+            }
+            if (maxGradient > -Infinity) {
+                gradientValue = maxGradient;
+            }
+        } else {
+            gradientValue = parseFloat(wordEl.style.getPropertyValue('--gradient-position'));
+        }
+
+        gradients.push(gradientValue);
+    }
+
+    return gradients;
+}
+
+function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine: HTMLElement): boolean {
+    const translatedWords = Array.from(
+        translatedLine.querySelectorAll('.slt-sync-word, .slt-replace-word')
+    ) as HTMLElement[];
+
+    if (translatedWords.length === 0) return false;
+
+    const isActive = isLineActive(originalLine);
+    const isSung = originalLine.classList.contains('Sung');
+    const isNotSung = originalLine.classList.contains('NotSung');
+    const originalWordGradients = getOriginalWordGradients(originalLine);
+    const overallProgress = getOverallWordGradientProgress(originalLine);
+    const PROGRESSION_SMOOTHING = 0.22;
+    const LATCH_WHITE_THRESHOLD = 96;
+
+    const groupedTranslatedWordIndexes = new Map<number, number[]>();
+    translatedWords.forEach((wordEl, index) => {
+        const mappedIndex = parseInt(wordEl.dataset.originalIndex || '-1', 10);
+        if (mappedIndex < 0) return;
+        if (!groupedTranslatedWordIndexes.has(mappedIndex)) {
+            groupedTranslatedWordIndexes.set(mappedIndex, []);
+        }
+        groupedTranslatedWordIndexes.get(mappedIndex)!.push(index);
+    });
+
+    translatedWords.forEach((wordEl, i) => {
+        let gradientPosition = -20;
+        const previousGradient = parseFloat(wordEl.dataset.sltGradientPos || 'NaN');
+        const wasLatchedWhite = wordEl.dataset.sltLatchedWhite === '1';
+
+        if (!isActive) {
+            gradientPosition = isSung ? 100 : -20;
+            delete wordEl.dataset.sltLatchedWhite;
+        } else {
+            const mappedIndex = parseInt(wordEl.dataset.originalIndex || '-1', 10);
+            const mappedGradient =
+                mappedIndex >= 0 && mappedIndex < originalWordGradients.length
+                    ? originalWordGradients[mappedIndex]
+                    : NaN;
+
+            if (!isNaN(mappedGradient)) {
+                const groupedIndexes = groupedTranslatedWordIndexes.get(mappedIndex) || [];
+                const groupSize = groupedIndexes.length;
+                const indexInGroup = groupedIndexes.indexOf(i);
+
+                if (groupSize > 1 && indexInGroup >= 0) {
+                    const sourceProgress = Math.max(0, Math.min(1, (mappedGradient + 20) / 120));
+                    const segmentStart = indexInGroup / groupSize;
+                    const segmentEnd = (indexInGroup + 1) / groupSize;
+
+                    if (sourceProgress <= segmentStart) {
+                        gradientPosition = -20;
+                    } else if (sourceProgress >= segmentEnd) {
+                        gradientPosition = 100;
+                    } else {
+                        const localProgress = (sourceProgress - segmentStart) / Math.max(segmentEnd - segmentStart, 0.0001);
+                        gradientPosition = -20 + Math.max(0, Math.min(1, localProgress)) * 120;
+                    }
+                } else {
+                    gradientPosition = mappedGradient;
+                }
+            } else if (overallProgress !== null) {
+                const totalWords = Math.max(translatedWords.length, 1);
+                const wordStart = i / totalWords;
+                const wordEnd = (i + 1) / totalWords;
+
+                if (overallProgress <= wordStart) {
+                    gradientPosition = -20;
+                } else if (overallProgress >= wordEnd) {
+                    gradientPosition = 100;
+                } else {
+                    const localProgress = (overallProgress - wordStart) / Math.max(wordEnd - wordStart, 0.0001);
+                    gradientPosition = -20 + Math.max(0, Math.min(1, localProgress)) * 120;
+                }
+            }
+
+            if (!isNaN(previousGradient)) {
+                gradientPosition = Math.max(gradientPosition, previousGradient);
+            }
+
+            if (wasLatchedWhite || gradientPosition >= LATCH_WHITE_THRESHOLD) {
+                gradientPosition = 100;
+                wordEl.dataset.sltLatchedWhite = '1';
+            } else if (!isNaN(previousGradient)) {
+                gradientPosition = previousGradient + (gradientPosition - previousGradient) * PROGRESSION_SMOOTHING;
+            }
+        }
+
+        const clamped = Math.max(-20, Math.min(100, gradientPosition));
+        wordEl.dataset.sltGradientPos = clamped.toString();
+        wordEl.style.setProperty('--gradient-position', `${clamped}%`);
+
+        const isWordSung = clamped >= 90;
+        const isWordActive = clamped > -15 && clamped < 90;
+
+        wordEl.classList.toggle('slt-word-past', isWordSung);
+        wordEl.classList.toggle('slt-word-active', isWordActive);
+        wordEl.classList.toggle('slt-word-future', !isWordSung && !isWordActive);
+
+        wordEl.classList.toggle('word-sung', isWordSung);
+        wordEl.classList.toggle('word-active', isWordActive);
+        wordEl.classList.toggle('word-notsng', !isWordSung && !isWordActive);
+
+        if (!isActive && isNotSung) {
+            wordEl.classList.remove('word-sung', 'word-active', 'slt-word-past', 'slt-word-active');
+            wordEl.classList.add('word-notsng', 'slt-word-future');
+        }
+    });
+
+    return true;
+}
+
 function updateSyncedWordStates(doc: Document): void {
-    if (!isOverlayEnabled || !currentConfig.syncWordHighlight) return;
-    
+    if (!isOverlayEnabled) return;
+
     const lyricsContainer = doc.querySelector('.SpicyLyricsScrollContainer');
     const lyricsType = lyricsContainer?.getAttribute('data-lyrics-type') || 'Line';
-    
+    const Spicetify = (globalThis as any).Spicetify;
+    const currentTimeMs = Spicetify?.Player?.getProgress?.() || 0;
+    const currentTime = currentTimeMs / 1000;
+
+    const lines = getLyricLines(doc);
+
     doc.querySelectorAll('.slt-sync-translation').forEach((transLine) => {
         const transLineEl = transLine as HTMLElement;
         const lineIndex = parseInt(transLineEl.dataset.lineIndex || '-1');
-        if (lineIndex < 0) return;
-        
-        const lines = getLyricLines(doc);
-        if (lineIndex >= lines.length) return;
-        
+        if (lineIndex < 0 || lineIndex >= lines.length) return;
+
         const originalLine = lines[lineIndex] as HTMLElement;
         if (!originalLine) return;
-        
+
+        const originalGradient = originalLine.style.getPropertyValue('--gradient-position').trim();
         const isActive = isLineActive(originalLine);
-        transLine.classList.toggle('active', isActive);
-        
-        if (lyricsType === 'Line') {
-            const isSung = originalLine.classList.contains('Sung');
-            const isLineActiveClass = originalLine.classList.contains('Active');
-            
-            const gradientPos = originalLine.style.getPropertyValue('--gradient-position');
-            const blurRadius = originalLine.style.getPropertyValue('--text-shadow-blur-radius');
-            const shadowOpacity = originalLine.style.getPropertyValue('--text-shadow-opacity');
-            
-            if (gradientPos && gradientPos.trim()) {
-                transLineEl.style.setProperty('--gradient-position', gradientPos);
-            } else if (isSung) {
-                transLineEl.style.setProperty('--gradient-position', '100%');
-            } else if (!isLineActiveClass) {
-                transLineEl.style.setProperty('--gradient-position', '-20%');
-            }
-            
-            if (blurRadius && blurRadius.trim()) {
-                transLineEl.style.setProperty('--text-shadow-blur-radius', blurRadius);
-            }
-            if (shadowOpacity && shadowOpacity.trim()) {
-                transLineEl.style.setProperty('--text-shadow-opacity', shadowOpacity);
-                const opacityValue = parseFloat(shadowOpacity);
-                if (!isNaN(opacityValue)) {
-                    transLineEl.style.setProperty('--text-shadow-opacity-decimal', (opacityValue / 100).toString());
-                }
-            }
+        const isSung = originalLine.classList.contains('Sung');
+        const isNotSung = originalLine.classList.contains('NotSung');
+
+        syncTranslationLineFromOriginal(originalLine, transLineEl, lyricsType);
+
+        const updatedByWords = updateTranslatedWordGradients(transLineEl, originalLine);
+        if (updatedByWords) {
+            transLineEl.style.removeProperty('--gradient-position');
             return;
         }
-        
-        const transWords = transLine.querySelectorAll('.slt-sync-word');
-        const originalWords = originalLine.querySelectorAll('.word:not(.dot), .letterGroup .letter, .syllable');
-        
-        transWords.forEach((transWord) => {
-            const transWordEl = transWord as HTMLElement;
-            const originalIndex = parseInt(transWordEl.dataset.originalIndex || '0');
-            
-            if (originalIndex < originalWords.length) {
-                const originalWord = originalWords[originalIndex] as HTMLElement;
-                
-                const isSung = originalWord.classList.contains('Sung') || 
-                               originalWord.classList.contains('sung');
-                const isWordActive = originalWord.classList.contains('Active') ||
-                                    originalWord.classList.contains('active');
-                
-                transWord.classList.remove('slt-word-past', 'slt-word-active', 'slt-word-future');
-                
-                if (isSung) {
-                    transWord.classList.add('slt-word-past');
-                    transWordEl.style.setProperty('--gradient-position', '100%');
-                } else if (isWordActive) {
-                    transWord.classList.add('slt-word-active');
-                    const gradientPos = originalWord.style.getPropertyValue('--gradient-position');
-                    if (gradientPos && gradientPos.trim()) {
-                        transWordEl.style.setProperty('--gradient-position', gradientPos);
-                    }
-                } else {
-                    transWord.classList.add('slt-word-future');
-                    transWordEl.style.setProperty('--gradient-position', '-20%');
-                }
-                
-                const blurRadius = originalWord.style.getPropertyValue('--text-shadow-blur-radius');
-                const shadowOpacity = originalWord.style.getPropertyValue('--text-shadow-opacity');
-                
-                if (blurRadius && blurRadius.trim()) {
-                    transWordEl.style.setProperty('--text-shadow-blur-radius', blurRadius);
-                }
-                if (shadowOpacity && shadowOpacity.trim()) {
-                    const opacityValue = parseFloat(shadowOpacity);
-                    if (!isNaN(opacityValue)) {
-                        transWordEl.style.setProperty('--text-shadow-opacity-decimal', (opacityValue / 100).toString());
-                    }
-                    transWordEl.style.setProperty('--text-shadow-opacity', shadowOpacity);
-                }
+
+        if (originalGradient !== '') {
+            return;
+        }
+
+        if (!isActive) {
+            transLineEl.style.setProperty('--gradient-position', isSung ? '100%' : (isNotSung ? '-20%' : '-20%'));
+            return;
+        }
+
+        const wordProgress = getOverallWordGradientProgress(originalLine);
+        if (wordProgress !== null) {
+            transLineEl.style.setProperty('--gradient-position', `${-20 + wordProgress * 120}%`);
+            return;
+        }
+
+        const lineStartTime = parseFloat(transLineEl.dataset.startTime || '0');
+        const lineEndTime = parseFloat(transLineEl.dataset.endTime || '0');
+        if (lineEndTime > 0 && lineStartTime >= 0) {
+            if (currentTime >= lineEndTime) {
+                transLineEl.style.setProperty('--gradient-position', '100%');
+            } else if (currentTime < lineStartTime) {
+                transLineEl.style.setProperty('--gradient-position', '-20%');
+            } else {
+                const total = lineEndTime - lineStartTime;
+                const pct = total <= 0 ? 1 : (currentTime - lineStartTime) / total;
+                transLineEl.style.setProperty('--gradient-position', `${-20 + Math.max(0, Math.min(1, pct)) * 120}%`);
             }
-        });
+        }
+    });
+}
+
+function syncBlurToTranslations(doc: Document): void {
+    doc.querySelectorAll('.slt-interleaved-translation, .slt-replace-line').forEach((transEl) => {
+        const transHtml = transEl as HTMLElement;
+        let lineEl = transEl.previousElementSibling as HTMLElement | null;
+        while (lineEl && !lineEl.classList.contains('line')) {
+            lineEl = lineEl.previousElementSibling as HTMLElement | null;
+        }
+        if (lineEl) {
+            const blurAmount = lineEl.style.getPropertyValue('--BlurAmount');
+            if (blurAmount) {
+                transHtml.style.setProperty('--BlurAmount', blurAmount);
+            } else {
+                transHtml.style.removeProperty('--BlurAmount');
+            }
+        }
     });
 }
 
@@ -522,7 +908,7 @@ function onActiveLineChanged(doc: Document): void {
     lastActiveLineUpdate = now;
     
     try {
-        if (currentConfig.mode === 'interleaved') {
+        if (currentConfig.mode === 'interleaved' || currentConfig.mode === 'replace') {
             if (!cachedLines) {
                 cachedLines = getLyricLines(doc);
             }
@@ -531,9 +917,10 @@ function onActiveLineChanged(doc: Document): void {
 
             if (!cachedTranslationMap) {
                 cachedTranslationMap = new Map();
-                const translationEls = doc.querySelectorAll('.slt-interleaved-translation');
+                const selector = currentConfig.mode === 'replace' ? '.slt-replace-line' : '.slt-interleaved-translation';
+                const translationEls = doc.querySelectorAll(selector);
                 translationEls.forEach(el => {
-                    const idx = parseInt((el as HTMLElement).dataset.forLine || '-1', 10);
+                    const idx = parseInt((el as HTMLElement).dataset.forLine || (el as HTMLElement).dataset.lineIndex || '-1', 10);
                     if (idx >= 0) cachedTranslationMap!.set(idx, el as HTMLElement);
                 });
             }
@@ -554,7 +941,14 @@ function onActiveLineChanged(doc: Document): void {
 
                 if (currentActiveIndex !== -1) {
                     const newEl = cachedTranslationMap.get(currentActiveIndex);
-                    if (newEl) newEl.classList.add('active');
+                    if (newEl) {
+                        newEl.classList.add('active');
+                        if (currentConfig.mode === 'replace') {
+                            try {
+                                newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            } catch (scrollErr) { }
+                        }
+                    }
                 }
 
                 lastActiveIndex = currentActiveIndex;
@@ -565,37 +959,50 @@ function onActiveLineChanged(doc: Document): void {
 
 const activeLineObservers = new Map<Document, MutationObserver>();
 let activeSyncIntervalId: ReturnType<typeof setInterval> | null = null;
+let activeSyncRafId: number | null = null;
+
+function syncLoop(): void {
+    if (!isOverlayEnabled) {
+        activeSyncRafId = null;
+        return;
+    }
+    
+    try {
+        onActiveLineChanged(document);
+        updateSyncedWordStates(document);
+        syncBlurToTranslations(document);
+        
+        const pipWindow = getPIPWindow();
+        if (pipWindow) {
+            try {
+                const pipDoc = pipWindow.document;
+                if (pipDoc && pipDoc.body) {
+                    onActiveLineChanged(pipDoc);
+                    updateSyncedWordStates(pipDoc);
+                    syncBlurToTranslations(pipDoc);
+                    
+                    if (!activeLineObservers.has(pipDoc)) {
+                        setupActiveLineObserver(pipDoc);
+                    }
+                }
+            } catch (pipErr) {
+            }
+        }
+    } catch (e) { }
+    
+    activeSyncRafId = requestAnimationFrame(syncLoop);
+}
 
 function startActiveSyncInterval(): void {
-    if (activeSyncIntervalId) return;
-    
-    activeSyncIntervalId = setInterval(() => {
-        if (!isOverlayEnabled) return;
-        
-        try {
-            onActiveLineChanged(document);
-            updateSyncedWordStates(document);
-            
-            const pipWindow = getPIPWindow();
-            if (pipWindow) {
-                try {
-                    const pipDoc = pipWindow.document;
-                    if (pipDoc && pipDoc.body) {
-                        onActiveLineChanged(pipDoc);
-                        updateSyncedWordStates(pipDoc);
-                        
-                        if (!activeLineObservers.has(pipDoc)) {
-                            setupActiveLineObserver(pipDoc);
-                        }
-                    }
-                } catch (pipErr) {
-                }
-            }
-        } catch (e) { }
-    }, 80);
+    if (activeSyncRafId) return;
+    activeSyncRafId = requestAnimationFrame(syncLoop);
 }
 
 function stopActiveSyncInterval(): void {
+    if (activeSyncRafId) {
+        cancelAnimationFrame(activeSyncRafId);
+        activeSyncRafId = null;
+    }
     if (activeSyncIntervalId) {
         clearInterval(activeSyncIntervalId);
         activeSyncIntervalId = null;
@@ -731,12 +1138,32 @@ export function disableOverlay(): void {
         
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
         doc.querySelectorAll('.slt-sync-translation').forEach(el => el.remove());
-        doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         
+        doc.querySelectorAll('.slt-replace-line').forEach(el => el.remove());
+        doc.querySelectorAll('.slt-replace-hidden').forEach(el => el.classList.remove('slt-replace-hidden'));
+        
+        doc.querySelectorAll('[data-slt-original-html]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalHtml;
+            if (original !== undefined) {
+                el.innerHTML = original;
+                delete (el as HTMLElement).dataset.sltOriginalHtml;
+            }
+        });
+        doc.querySelectorAll('[data-slt-original-text]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalText;
+            if (original !== undefined) {
+                el.textContent = original;
+                delete (el as HTMLElement).dataset.sltOriginalText;
+            }
+        });
+        doc.querySelectorAll('[data-slt-replaced-with]').forEach(el => {
+            delete (el as HTMLElement).dataset.sltReplacedWith;
+        });
+        
+        doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         doc.querySelectorAll('.spicy-hidden-original').forEach(el => {
             el.classList.remove('spicy-hidden-original');
         });
-        
         doc.querySelectorAll('.spicy-original-wrapper').forEach(wrapper => {
             const parent = wrapper.parentElement;
             if (parent) {
@@ -785,14 +1212,36 @@ export function updateOverlayContent(translations: Map<number, string>): void {
 
 export function clearOverlayContent(): void {
     translationMap.clear();
+    lineTimingData = [];
     
     const clearDoc = (doc: Document) => {
         const container = doc.getElementById('spicy-translate-overlay');
         if (container) container.innerHTML = '';
         
         doc.querySelectorAll('.slt-interleaved-translation').forEach(el => el.remove());
-        doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         
+        doc.querySelectorAll('.slt-replace-line').forEach(el => el.remove());
+        doc.querySelectorAll('.slt-replace-hidden').forEach(el => el.classList.remove('slt-replace-hidden'));
+        
+        doc.querySelectorAll('[data-slt-original-html]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalHtml;
+            if (original !== undefined) {
+                el.innerHTML = original;
+                delete (el as HTMLElement).dataset.sltOriginalHtml;
+            }
+        });
+        doc.querySelectorAll('[data-slt-original-text]').forEach(el => {
+            const original = (el as HTMLElement).dataset.sltOriginalText;
+            if (original !== undefined) {
+                el.textContent = original;
+                delete (el as HTMLElement).dataset.sltOriginalText;
+            }
+        });
+        doc.querySelectorAll('[data-slt-replaced-with]').forEach(el => {
+            delete (el as HTMLElement).dataset.sltReplacedWith;
+        });
+        
+        doc.querySelectorAll('.spicy-translation-container').forEach(el => el.remove());
         doc.querySelectorAll('.spicy-hidden-original').forEach(el => {
             el.classList.remove('spicy-hidden-original');
         });
@@ -832,6 +1281,11 @@ export function setOverlayConfig(config: Partial<OverlayConfig>): void {
     }
 }
 
+
+export function setLineTimingData(data: LyricLineData[]): void {
+    lineTimingData = data;
+}
+
 export function initPIPOverlay(): void {
     if (!isOverlayEnabled) return;
     
@@ -848,6 +1302,7 @@ export function initPIPOverlay(): void {
 
 export function getOverlayStyles(): string {
     return `
+
 body.slt-overlay-active .LyricsContent {}
 
 .spicy-translate-overlay {
@@ -856,77 +1311,9 @@ body.slt-overlay-active .LyricsContent {}
     z-index: 10;
 }
 
-.slt-interleaved-translation {
-    display: block;
-    font-size: calc(0.45em * var(--slt-overlay-font-scale, 1));
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.5);
-    margin: 0;
-    padding: 4px 0 12px 0;
-    line-height: 1.2;
-    pointer-events: none;
-    transition: color 0.3s ease, opacity 0.3s ease, text-shadow 0.4s cubic-bezier(0.25, 0.1, 0.25, 1), filter 0.3s ease;
-    letter-spacing: 0.01em;
-    text-shadow: none;
-    filter: blur(var(--slt-blur-amount, 1.5px));
-}
-
-.slt-interleaved-translation.slt-music-break {
-    color: rgba(255, 255, 255, 0.3);
-    font-size: calc(0.35em * var(--slt-overlay-font-scale, 1));
-    letter-spacing: 0.3em;
-    padding: 8px 0 16px 0;
-}
-
-.slt-interleaved-translation:not(.active) {
-    opacity: 0.6;
-    filter: blur(var(--slt-blur-amount, 1.5px));
-    text-shadow: 0 0 0 transparent;
-}
-
-.slt-interleaved-translation.active {
-    color: #fff;
-    opacity: 1;
-    font-weight: 600;
-    filter: blur(0px);
-    text-shadow: 
-        0 0 8px rgba(255, 255, 255, 0.6),
-        0 0 16px rgba(255, 255, 255, 0.4),
-        0 0 24px rgba(255, 255, 255, 0.2);
-}
-
-.slt-interleaved-translation.slt-music-break.active {
-    color: rgba(255, 255, 255, 0.6);
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-}
-
-@keyframes slt-ttml-glow {
-    0% {
-        text-shadow: 
-            0 0 4px rgba(255, 255, 255, 0.4),
-            0 0 8px rgba(255, 255, 255, 0.2);
-        filter: blur(0.2px);
-    }
-    50% {
-        text-shadow: 
-            0 0 12px rgba(255, 255, 255, 0.9),
-            0 0 24px rgba(255, 255, 255, 0.7),
-            0 0 40px rgba(255, 255, 255, 0.5);
-    }
-    100% {
-        text-shadow: 
-            0 0 8px rgba(255, 255, 255, 0.8),
-            0 0 16px rgba(255, 255, 255, 0.6),
-            0 0 32px rgba(255, 255, 255, 0.4),
-            0 0 48px rgba(255, 255, 255, 0.2);
-        filter: none;
-    }
-}
 
 .spicy-pip-wrapper .slt-interleaved-translation {
     font-size: calc(0.82em * var(--slt-overlay-font-scale, 1));
-    margin-top: 2px;
-    margin-bottom: 4px;
 }
 
 .Cinema--Container .slt-interleaved-translation,
@@ -936,24 +1323,20 @@ body.slt-overlay-active .LyricsContent {}
 
 #SpicyLyricsPage.SidebarMode .slt-interleaved-translation {
     font-size: calc(0.78em * var(--slt-overlay-font-scale, 1));
-    margin-top: 2px;
-    margin-bottom: 4px;
 }
 
 body.SpicySidebarLyrics__Active #SpicyLyricsPage .slt-interleaved-translation {
     font-size: calc(0.65em * var(--slt-overlay-font-scale, 1));
-    margin-top: 1px;
-    margin-bottom: 3px;
 }
 
-body.SpicySidebarLyrics__Active #SpicyLyricsPage .spicy-translation-text {
-    color: inherit;
-    font-family: inherit;
-}
 
-.spicy-pip-wrapper .spicy-translation-text {
-    color: inherit;
-    font-family: inherit;
+.slt-interleaved-translation.slt-music-break {
+    color: rgba(255, 255, 255, 0.35) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.35) !important;
+    background: none !important;
+    font-size: calc(0.35em * var(--slt-overlay-font-scale, 1));
+    letter-spacing: 0.3em;
+    padding: 8px 0 16px 0;
 }
 `;
 }
@@ -966,6 +1349,7 @@ export default {
     isOverlayActive,
     getOverlayConfig,
     setOverlayConfig,
+    setLineTimingData,
     initPIPOverlay,
     getOverlayStyles
 };

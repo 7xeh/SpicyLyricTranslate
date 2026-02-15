@@ -218,7 +218,16 @@ function getCachedTranslation(text: string, targetLang: string): string | null {
     
     if (cached) {
         if (Date.now() - cached.timestamp < CACHE_EXPIRY) {
-            return cached.translation;
+            const normalized = normalizeTranslatedLine(cached.translation || '');
+            if (normalized !== cached.translation) {
+                cache[key] = {
+                    ...cached,
+                    translation: normalized,
+                    timestamp: Date.now()
+                };
+                storage.setJSON('translation-cache', cache);
+            }
+            return normalized;
         }
     }
     
@@ -228,9 +237,10 @@ function getCachedTranslation(text: string, targetLang: string): string | null {
 function cacheTranslation(text: string, targetLang: string, translation: string, api?: string): void {
     const cache = storage.getJSON<TranslationCache>('translation-cache', {});
     const key = `${targetLang}:${text}`;
+    const normalizedTranslation = normalizeTranslatedLine(translation || '');
     
     cache[key] = {
-        translation,
+        translation: normalizedTranslation,
         timestamp: Date.now(),
         api
     };
@@ -494,7 +504,7 @@ function parseMarkedBatchResponse(translatedText: string, expectedCount: number,
 
 function normalizeTranslatedLine(text: string): string {
     return text
-        .replace(/\[\[SLT_BATCH_[^\]]+\]\]/g, '')
+    .replace(/\[\[\s*SLT[\s_-]*BATCH[^\]]*\]\]/gi, '')
         .replace(/\r?\n+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();

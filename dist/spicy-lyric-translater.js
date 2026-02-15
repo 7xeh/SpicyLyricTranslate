@@ -656,7 +656,16 @@ var SpicyLyricTranslater = (() => {
     const cached = cache[key];
     if (cached) {
       if (Date.now() - cached.timestamp < CACHE_EXPIRY) {
-        return cached.translation;
+        const normalized = normalizeTranslatedLine(cached.translation || "");
+        if (normalized !== cached.translation) {
+          cache[key] = {
+            ...cached,
+            translation: normalized,
+            timestamp: Date.now()
+          };
+          storage_default.setJSON("translation-cache", cache);
+        }
+        return normalized;
       }
     }
     return null;
@@ -664,8 +673,9 @@ var SpicyLyricTranslater = (() => {
   function cacheTranslation(text, targetLang, translation, api) {
     const cache = storage_default.getJSON("translation-cache", {});
     const key = `${targetLang}:${text}`;
+    const normalizedTranslation = normalizeTranslatedLine(translation || "");
     cache[key] = {
-      translation,
+      translation: normalizedTranslation,
       timestamp: Date.now(),
       api
     };
@@ -869,7 +879,7 @@ var SpicyLyricTranslater = (() => {
     return byIndex;
   }
   function normalizeTranslatedLine(text) {
-    return text.replace(/\[\[SLT_BATCH_[^\]]+\]\]/g, "").replace(/\r?\n+/g, " ").replace(/\s+/g, " ").trim();
+    return text.replace(/\[\[\s*SLT[\s_-]*BATCH[^\]]*\]\]/gi, "").replace(/\r?\n+/g, " ").replace(/\s+/g, " ").trim();
   }
   function parseBatchTextFallbacks(translatedText, expectedCount) {
     const separatorSplit = translatedText.split(BATCH_SEPARATOR_REGEX).map((s) => normalizeTranslatedLine(s));

@@ -42,6 +42,8 @@ let lastApiCallTime = 0;
 
 const BATCH_SEPARATOR = ' ||| ';
 const BATCH_SEPARATOR_REGEX = /\s*\|\|\|\s*/g;
+const BATCH_MARKER_PREFIX = '[[SLT_BATCH_';
+const BATCH_CHUNK_SIZE = 6;
 
 async function rateLimitedDelay(): Promise<void> {
     const now = Date.now();
@@ -361,6 +363,193 @@ async function translateWithCustomApi(text: string, targetLang: string): Promise
     }
 }
 
+function extractDetectedLanguage(data: any): string | undefined {
+    return data?.detectedLanguage || data?.detected_language || data?.sourceLang || data?.src;
+}
+
+function normalizeBatchTranslations(data: any): { translations: string[]; detectedLang?: string } | null {
+    const candidates: unknown[] = [
+        data?.translatedText,
+        data?.translated_text,
+        data?.translation,
+        data?.result,
+        data?.text,
+        data?.data?.translatedText,
+        data?.translations,
+        data
+    ];
+
+    for (const candidate of candidates) {
+        if (!Array.isArray(candidate)) continue;
+
+        if (candidate.every(item => typeof item === 'string')) {
+            return {
+                translations: (candidate as string[]).map(item => item ?? ''),
+                detectedLang: extractDetectedLanguage(data)
+            };
+        }
+
+        if (candidate.every(item => typeof item === 'object' && item !== null && ('text' in item || 'translatedText' in item))) {
+            const translations = candidate.map(item => {
+                const value = (item as any).translatedText ?? (item as any).text ?? '';
+                return String(value);
+            });
+            return {
+                translations,
+                detectedLang: extractDetectedLanguage(data)
+            };
+        }
+    }
+
+    return null;
+}
+
+async function translateBatchArray(texts: string[], targetLang: string): Promise<{ translations: string[]; detectedLang?: string }> {
+    if (texts.length === 0) {
+        return { translations: [], detectedLang: undefined };
+    }
+
+    const url = preferredApi === 'libretranslate'
+        ? 'https://libretranslate.de/translate'
+        : customApiUrl;
+
+    if (!url) {
+        throw new Error('Custom API URL not configured');
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            q: texts,
+            text: texts,
+            source: 'auto',
+            target: targetLang,
+            format: 'text'
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Batch API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const normalized = normalizeBatchTranslations(data);
+    if (!normalized) {
+        throw new Error('Batch API returned non-array payload');
+    }
+
+    return normalized;
+}
+
+function buildMarkedBatchPayload(lines: string[]): { combinedText: string; markerNonce: string } {
+    const markerNonce = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const combinedText = lines
+        .map((line, index) => `${BATCH_MARKER_PREFIX}${markerNonce}_${index}]]${line}`)
+        .join('\n');
+    return { combinedText, markerNonce };
+}
+
+function parseMarkedBatchResponse(translatedText: string, expectedCount: number, markerNonce: string): string[] | null {
+    const markerRegex = new RegExp(`\\[\\[SLT_BATCH_${markerNonce}_(\\d+)\\]\\]`, 'g');
+    const matches: Array<{ index: number; start: number; markerEnd: number }> = [];
+
+    let match: RegExpExecArray | null;
+    while ((match = markerRegex.exec(translatedText)) !== null) {
+        matches.push({
+            index: Number.parseInt(match[1], 10),
+            start: match.index,
+            markerEnd: markerRegex.lastIndex
+        });
+    }
+
+    if (matches.length !== expectedCount) {
+        return null;
+    }
+
+    const seen = new Set<number>();
+    const byIndex = new Array<string>(expectedCount).fill('');
+
+    for (let i = 0; i < matches.length; i++) {
+        const current = matches[i];
+        const next = matches[i + 1];
+
+        if (current.index < 0 || current.index >= expectedCount || seen.has(current.index)) {
+            return null;
+        }
+        seen.add(current.index);
+
+        const segment = translatedText.slice(current.markerEnd, next ? next.start : translatedText.length);
+        byIndex[current.index] = segment.replace(/^\s+/, '').trimEnd();
+    }
+
+    if (seen.size !== expectedCount) {
+        return null;
+    }
+
+    return byIndex;
+}
+
+function normalizeTranslatedLine(text: string): string {
+    return text
+        .replace(/\[\[SLT_BATCH_[^\]]+\]\]/g, '')
+        .replace(/\r?\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function parseBatchTextFallbacks(translatedText: string, expectedCount: number): string[] | null {
+    const separatorSplit = translatedText
+        .split(BATCH_SEPARATOR_REGEX)
+        .map(s => normalizeTranslatedLine(s));
+    if (separatorSplit.length === expectedCount) {
+        return separatorSplit;
+    }
+
+    const newlineSplit = translatedText
+        .split(/\r?\n+/)
+        .map(s => normalizeTranslatedLine(s))
+        .filter(Boolean);
+    if (newlineSplit.length === expectedCount) {
+        return newlineSplit;
+    }
+
+    return null;
+}
+
+async function translateChunkedBatch(
+    lines: string[],
+    targetLang: string,
+    chunkSize: number = BATCH_CHUNK_SIZE
+): Promise<{ translations: string[]; detectedLang?: string }> {
+    const translations: string[] = [];
+    let detectedLang: string | undefined;
+
+    for (let start = 0; start < lines.length; start += chunkSize) {
+        const chunk = lines.slice(start, start + chunkSize);
+        const { combinedText, markerNonce } = buildMarkedBatchPayload(chunk);
+        const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+
+        const parsed =
+            parseMarkedBatchResponse(result.translatedText, chunk.length, markerNonce) ||
+            parseBatchTextFallbacks(result.translatedText, chunk.length);
+
+        if (!parsed || parsed.length !== chunk.length) {
+            throw new Error(`Chunked batch mismatch: Sent ${chunk.length}, got ${parsed?.length ?? 0}`);
+        }
+
+        if (!detectedLang && result.detectedLanguage) {
+            detectedLang = result.detectedLanguage;
+        }
+
+        translations.push(...parsed);
+    }
+
+    return { translations, detectedLang };
+}
+
 export async function translateText(text: string, targetLang: string): Promise<TranslationResult> {
     const cached = getCachedTranslation(text, targetLang);
     if (cached) {
@@ -504,28 +693,57 @@ export async function translateLyrics(
     
     debug(`${cachedResults.size} cached, ${uncachedLines.length} to translate`);
     
-    const combinedText = uncachedLines.map(l => l.text).join(BATCH_SEPARATOR);
     let detectedLang = detectedSourceLang || 'auto';
     
     try {
-        const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
-        const translatedLines = result.translatedText.split(BATCH_SEPARATOR_REGEX);
-        
-        if (result.detectedLanguage) {
-            detectedLang = result.detectedLanguage;
+        let translatedLines: string[] | null = null;
+
+        if ((preferredApi === 'custom' || preferredApi === 'libretranslate') && uncachedLines.length > 1) {
+            try {
+                const batchResult = await retryWithBackoff(() => translateBatchArray(uncachedLines.map(l => l.text), targetLang));
+                translatedLines = batchResult.translations;
+                if (batchResult.detectedLang) {
+                    detectedLang = batchResult.detectedLang;
+                }
+            } catch (batchArrayError) {
+                warn('Batch-array translation unavailable, falling back to marker batching:', batchArrayError);
+            }
         }
 
-        if (translatedLines.length !== uncachedLines.length) {
-            throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines.length}. API might have stripped delimiters.`);
+        if (!translatedLines) {
+            const { combinedText, markerNonce } = buildMarkedBatchPayload(uncachedLines.map(l => l.text));
+            const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+            translatedLines =
+                parseMarkedBatchResponse(result.translatedText, uncachedLines.length, markerNonce) ||
+                parseBatchTextFallbacks(result.translatedText, uncachedLines.length);
+
+            if (result.detectedLanguage) {
+                detectedLang = result.detectedLanguage;
+            }
+        }
+
+        if ((!translatedLines || translatedLines.length !== uncachedLines.length) && uncachedLines.length > 1) {
+            warn(`Primary batch parse failed for ${uncachedLines.length} lines, trying chunked batch mode (${BATCH_CHUNK_SIZE}/request)`);
+            const chunked = await translateChunkedBatch(uncachedLines.map(l => l.text), targetLang);
+            translatedLines = chunked.translations;
+            if (chunked.detectedLang) {
+                detectedLang = chunked.detectedLang;
+            }
+        }
+
+        if (!translatedLines || translatedLines.length !== uncachedLines.length) {
+            throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines?.length ?? 0}. API might have stripped delimiters.`);
         }
         
         uncachedLines.forEach((item, i) => {
-            const translation = translatedLines[i]?.trim() || item.text;
+            const normalized = normalizeTranslatedLine(translatedLines[i] || '');
+            const translation = normalized || item.text;
+            cacheTranslation(item.text, targetLang, translation, preferredApi);
             cachedResults.set(item.index, {
                 originalText: item.text,
                 translatedText: translation,
                 targetLanguage: targetLang,
-                wasTranslated: result.wasTranslated && translation !== item.text
+                wasTranslated: translation !== item.text
             });
         });
     } catch (error) {

@@ -569,7 +569,7 @@ function syncTranslationLineFromOriginal(
     translatedLine.classList.toggle('OppositeAligned', originalLine.classList.contains('OppositeAligned'));
     translatedLine.classList.toggle('rtl', originalLine.classList.contains('rtl'));
 
-    translatedLine.style.setProperty('--gradient-degrees', lyricsType === 'Line' ? '180deg' : '90deg');
+    translatedLine.style.setProperty('--gradient-degrees', '180deg');
 
     for (const prop of MIRRORED_LINE_STYLE_PROPS) {
         if (prop === '--gradient-degrees') continue;
@@ -597,6 +597,7 @@ function getOverallWordGradientProgress(originalLine: HTMLElement): number | nul
     let sungCount = 0;
     let activeWordIndex = -1;
     let activeWordGradient = 0;
+    let hasAnyGradientData = false;
 
     for (let i = 0; i < originalWords.length; i++) {
         const wordEl = originalWords[i] as HTMLElement;
@@ -621,6 +622,7 @@ function getOverallWordGradientProgress(originalLine: HTMLElement): number | nul
         }
 
         if (!isNaN(gradientValue)) {
+            hasAnyGradientData = true;
             if (gradientValue >= 90) {
                 sungCount = i + 1;
             } else if (gradientValue > -15) {
@@ -628,6 +630,10 @@ function getOverallWordGradientProgress(originalLine: HTMLElement): number | nul
                 activeWordGradient = Math.max(0, Math.min(1, (gradientValue + 20) / 120));
             }
         }
+    }
+
+    if (!hasAnyGradientData) {
+        return null;
     }
 
     if (activeWordIndex >= 0) {
@@ -694,7 +700,38 @@ function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine
         groupedTranslatedWordIndexes.get(mappedIndex)!.push(index);
     });
 
+    const hasWordLevelGradient = originalWordGradients.some(value => !isNaN(value));
+    const perWordGradientDegrees = hasWordLevelGradient ? '90deg' : '180deg';
+
+    if (!hasWordLevelGradient && overallProgress === null) {
+        const lineGradientRaw = originalLine.style.getPropertyValue('--gradient-position').trim();
+        const lineGradient = lineGradientRaw ? parseFloat(lineGradientRaw) : NaN;
+        const fallbackGradient = !isNaN(lineGradient)
+            ? Math.max(-20, Math.min(100, lineGradient))
+            : (isSung ? 100 : (isNotSung ? -20 : (isActive ? 40 : -20)));
+
+        translatedWords.forEach(wordEl => {
+            wordEl.style.setProperty('--gradient-degrees', perWordGradientDegrees);
+            wordEl.dataset.sltGradientPos = fallbackGradient.toString();
+            wordEl.style.setProperty('--gradient-position', `${fallbackGradient}%`);
+
+            const isWordSung = fallbackGradient >= 90;
+            const isWordActive = fallbackGradient > -15 && fallbackGradient < 90;
+
+            wordEl.classList.toggle('slt-word-past', isWordSung);
+            wordEl.classList.toggle('slt-word-active', isWordActive);
+            wordEl.classList.toggle('slt-word-future', !isWordSung && !isWordActive);
+
+            wordEl.classList.toggle('word-sung', isWordSung);
+            wordEl.classList.toggle('word-active', isWordActive);
+            wordEl.classList.toggle('word-notsng', !isWordSung && !isWordActive);
+        });
+
+        return true;
+    }
+
     translatedWords.forEach((wordEl, i) => {
+        wordEl.style.setProperty('--gradient-degrees', perWordGradientDegrees);
         let gradientPosition = -20;
         const previousGradient = parseFloat(wordEl.dataset.sltGradientPos || 'NaN');
         const wasLatchedWhite = wordEl.dataset.sltLatchedWhite === '1';

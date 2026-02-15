@@ -61,7 +61,58 @@ const updateState: UpdateState = {
 
 let hasShownUpdateNotice = false;
 let lastCheckTime = 0;
-const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const MIN_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+const DEFAULT_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const MAX_BACKOFF_MS = 2 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 6000;
+const SCHEDULE_JITTER_MS = 2 * 60 * 1000;
+
+let currentCheckIntervalMs = DEFAULT_CHECK_INTERVAL_MS;
+let currentBackoffMs = 0;
+let checkTimer: number | null = null;
+let checkInProgress = false;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(input, {
+            ...init,
+            signal: controller.signal
+        });
+        return response;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function getScheduledDelay(baseMs: number): number {
+    const normalizedBase = Math.max(MIN_CHECK_INTERVAL_MS, baseMs);
+    const jitter = Math.floor(Math.random() * SCHEDULE_JITTER_MS);
+    return normalizedBase + jitter + currentBackoffMs;
+}
+
+function scheduleNextCheck(forceDelayMs?: number): void {
+    if (checkTimer !== null) {
+        window.clearTimeout(checkTimer);
+    }
+
+    const delay = typeof forceDelayMs === 'number' ? Math.max(1000, forceDelayMs) : getScheduledDelay(currentCheckIntervalMs);
+    checkTimer = window.setTimeout(() => {
+        checkForUpdates();
+    }, delay);
+}
+
+function increaseBackoff(): void {
+    currentBackoffMs = currentBackoffMs === 0
+        ? 5 * 60 * 1000
+        : Math.min(MAX_BACKOFF_MS, currentBackoffMs * 2);
+}
+
+function resetBackoff(): void {
+    currentBackoffMs = 0;
+}
 
 function parseVersion(version: string): VersionInfo | null {
     const cleanVersion = version.replace(/^v/, '');
@@ -118,7 +169,7 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
     }
     
     try {
-        const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
+        const response = await fetchWithTimeout(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
         
         if (response.ok) {
             const data = await response.json();
@@ -159,7 +210,7 @@ export async function getLatestVersion(): Promise<{ version: VersionInfo; releas
     }
     
     try {
-        const response = await fetch(GITHUB_API_URL, {
+        const response = await fetchWithTimeout(GITHUB_API_URL, {
             headers: {
                 'Accept': 'application/vnd.github.v3+json'
             }
@@ -309,6 +360,32 @@ async function performUpdate(release: GitHubRelease, version: VersionInfo, modal
             }, 100);
         }
         
+        updateState.isUpdating = false;
+    }
+}
+
+async function performSilentAutoUpdate(version: VersionInfo): Promise<void> {
+    if (updateState.isUpdating) {
+        return;
+    }
+
+    try {
+        updateState.isUpdating = true;
+        updateState.progress = 100;
+        updateState.status = 'Reloading to apply update';
+
+        storage.set('pending-update-version', version.text);
+        storage.set('pending-update-timestamp', Date.now().toString());
+
+        if ((window as any)._spicy_lyric_translater_metadata) {
+            (window as any)._spicy_lyric_translater_metadata = {};
+        }
+
+        window.setTimeout(() => {
+            window.location.reload();
+        }, 350);
+    } catch (e) {
+        logError('Silent auto-update failed:', e);
         updateState.isUpdating = false;
     }
 }
@@ -577,42 +654,84 @@ function formatReleaseNotes(body: string): string {
 
 export async function checkForUpdates(force: boolean = false): Promise<void> {
     const now = Date.now();
-    if (!force && now - lastCheckTime < CHECK_INTERVAL_MS) {
+    if (checkInProgress) {
         return;
     }
+
+    if (!force && now - lastCheckTime < MIN_CHECK_INTERVAL_MS) {
+        scheduleNextCheck(MIN_CHECK_INTERVAL_MS - (now - lastCheckTime));
+        return;
+    }
+
+    if (!force && document.hidden) {
+        scheduleNextCheck();
+        return;
+    }
+
+    if (!force && navigator.onLine === false) {
+        increaseBackoff();
+        scheduleNextCheck();
+        return;
+    }
+
     lastCheckTime = now;
-    
-    if (!force && hasShownUpdateNotice) {
-        return;
-    }
+    checkInProgress = true;
     
     try {
         const latest = await getLatestVersion();
-        if (!latest) return;
+        if (!latest) {
+            increaseBackoff();
+            return;
+        }
         
         const current = getCurrentVersion();
         
         if (compareVersions(latest.version, current) > 0) {
             debug(`Update available: ${current.text} → ${latest.version.text}`);
-            showUpdateModal(current, latest.version, latest.release);
+            if (!hasShownUpdateNotice) {
+                hasShownUpdateNotice = true;
+                info(`Auto-updating Spicy Lyric Translater to ${latest.version.text}`);
+            }
+            await performSilentAutoUpdate(latest.version);
             hasShownUpdateNotice = true;
         } else {
             debug('Already on latest version:', current.text);
+            resetBackoff();
+            hasShownUpdateNotice = false;
         }
     } catch (error) {
+        increaseBackoff();
         logError('Error checking for updates:', error);
+    } finally {
+        checkInProgress = false;
+
+        if (!updateState.isUpdating) {
+            scheduleNextCheck();
+        }
     }
 }
 
-export function startUpdateChecker(intervalMs: number = 30 * 60 * 1000): void {
-    setTimeout(() => {
-        checkForUpdates();
-    }, 5000);
-    
-    setInterval(() => {
-        checkForUpdates();
-    }, intervalMs);
-    
+export function startUpdateChecker(intervalMs: number = DEFAULT_CHECK_INTERVAL_MS): void {
+    currentCheckIntervalMs = Math.max(MIN_CHECK_INTERVAL_MS, intervalMs);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            const elapsed = Date.now() - lastCheckTime;
+            if (elapsed >= MIN_CHECK_INTERVAL_MS && !checkInProgress && !updateState.isUpdating) {
+                checkForUpdates();
+            }
+        }
+    });
+
+    window.addEventListener('online', () => {
+        if (!checkInProgress && !updateState.isUpdating) {
+            resetBackoff();
+            checkForUpdates();
+        }
+    });
+
+    scheduleNextCheck(5000);
+
     info('Update checker started');
 }
 

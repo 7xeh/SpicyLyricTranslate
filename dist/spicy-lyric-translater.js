@@ -498,8 +498,9 @@ var SpicyLyricTranslater = (() => {
     backoffMultiplier: 2
   };
   var lastApiCallTime = 0;
-  var BATCH_SEPARATOR = " ||| ";
   var BATCH_SEPARATOR_REGEX = /\s*\|\|\|\s*/g;
+  var BATCH_MARKER_PREFIX = "[[SLT_BATCH_";
+  var BATCH_CHUNK_SIZE = 6;
   async function rateLimitedDelay() {
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCallTime;
@@ -764,6 +765,141 @@ var SpicyLyricTranslater = (() => {
       throw error2;
     }
   }
+  function extractDetectedLanguage(data) {
+    return data?.detectedLanguage || data?.detected_language || data?.sourceLang || data?.src;
+  }
+  function normalizeBatchTranslations(data) {
+    const candidates = [
+      data?.translatedText,
+      data?.translated_text,
+      data?.translation,
+      data?.result,
+      data?.text,
+      data?.data?.translatedText,
+      data?.translations,
+      data
+    ];
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate))
+        continue;
+      if (candidate.every((item) => typeof item === "string")) {
+        return {
+          translations: candidate.map((item) => item ?? ""),
+          detectedLang: extractDetectedLanguage(data)
+        };
+      }
+      if (candidate.every((item) => typeof item === "object" && item !== null && ("text" in item || "translatedText" in item))) {
+        const translations = candidate.map((item) => {
+          const value = item.translatedText ?? item.text ?? "";
+          return String(value);
+        });
+        return {
+          translations,
+          detectedLang: extractDetectedLanguage(data)
+        };
+      }
+    }
+    return null;
+  }
+  async function translateBatchArray(texts, targetLang) {
+    if (texts.length === 0) {
+      return { translations: [], detectedLang: void 0 };
+    }
+    const url = preferredApi === "libretranslate" ? "https://libretranslate.de/translate" : customApiUrl;
+    if (!url) {
+      throw new Error("Custom API URL not configured");
+    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        q: texts,
+        text: texts,
+        source: "auto",
+        target: targetLang,
+        format: "text"
+      })
+    });
+    if (!response.ok) {
+      throw new Error(`Batch API error: ${response.status}`);
+    }
+    const data = await response.json();
+    const normalized = normalizeBatchTranslations(data);
+    if (!normalized) {
+      throw new Error("Batch API returned non-array payload");
+    }
+    return normalized;
+  }
+  function buildMarkedBatchPayload(lines) {
+    const markerNonce = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const combinedText = lines.map((line, index) => `${BATCH_MARKER_PREFIX}${markerNonce}_${index}]]${line}`).join("\n");
+    return { combinedText, markerNonce };
+  }
+  function parseMarkedBatchResponse(translatedText, expectedCount, markerNonce) {
+    const markerRegex = new RegExp(`\\[\\[SLT_BATCH_${markerNonce}_(\\d+)\\]\\]`, "g");
+    const matches = [];
+    let match;
+    while ((match = markerRegex.exec(translatedText)) !== null) {
+      matches.push({
+        index: Number.parseInt(match[1], 10),
+        start: match.index,
+        markerEnd: markerRegex.lastIndex
+      });
+    }
+    if (matches.length !== expectedCount) {
+      return null;
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const byIndex = new Array(expectedCount).fill("");
+    for (let i = 0; i < matches.length; i++) {
+      const current = matches[i];
+      const next = matches[i + 1];
+      if (current.index < 0 || current.index >= expectedCount || seen.has(current.index)) {
+        return null;
+      }
+      seen.add(current.index);
+      const segment = translatedText.slice(current.markerEnd, next ? next.start : translatedText.length);
+      byIndex[current.index] = segment.replace(/^\s+/, "").trimEnd();
+    }
+    if (seen.size !== expectedCount) {
+      return null;
+    }
+    return byIndex;
+  }
+  function normalizeTranslatedLine(text) {
+    return text.replace(/\[\[SLT_BATCH_[^\]]+\]\]/g, "").replace(/\r?\n+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  function parseBatchTextFallbacks(translatedText, expectedCount) {
+    const separatorSplit = translatedText.split(BATCH_SEPARATOR_REGEX).map((s) => normalizeTranslatedLine(s));
+    if (separatorSplit.length === expectedCount) {
+      return separatorSplit;
+    }
+    const newlineSplit = translatedText.split(/\r?\n+/).map((s) => normalizeTranslatedLine(s)).filter(Boolean);
+    if (newlineSplit.length === expectedCount) {
+      return newlineSplit;
+    }
+    return null;
+  }
+  async function translateChunkedBatch(lines, targetLang, chunkSize = BATCH_CHUNK_SIZE) {
+    const translations = [];
+    let detectedLang;
+    for (let start = 0; start < lines.length; start += chunkSize) {
+      const chunk = lines.slice(start, start + chunkSize);
+      const { combinedText, markerNonce } = buildMarkedBatchPayload(chunk);
+      const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+      const parsed = parseMarkedBatchResponse(result.translatedText, chunk.length, markerNonce) || parseBatchTextFallbacks(result.translatedText, chunk.length);
+      if (!parsed || parsed.length !== chunk.length) {
+        throw new Error(`Chunked batch mismatch: Sent ${chunk.length}, got ${parsed?.length ?? 0}`);
+      }
+      if (!detectedLang && result.detectedLanguage) {
+        detectedLang = result.detectedLanguage;
+      }
+      translations.push(...parsed);
+    }
+    return { translations, detectedLang };
+  }
   async function translateText(text, targetLang) {
     const cached = getCachedTranslation(text, targetLang);
     if (cached) {
@@ -883,24 +1019,48 @@ var SpicyLyricTranslater = (() => {
       return finalResults;
     }
     debug(`${cachedResults.size} cached, ${uncachedLines.length} to translate`);
-    const combinedText = uncachedLines.map((l) => l.text).join(BATCH_SEPARATOR);
     let detectedLang = detectedSourceLang || "auto";
     try {
-      const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
-      const translatedLines = result.translatedText.split(BATCH_SEPARATOR_REGEX);
-      if (result.detectedLanguage) {
-        detectedLang = result.detectedLanguage;
+      let translatedLines = null;
+      if ((preferredApi === "custom" || preferredApi === "libretranslate") && uncachedLines.length > 1) {
+        try {
+          const batchResult = await retryWithBackoff(() => translateBatchArray(uncachedLines.map((l) => l.text), targetLang));
+          translatedLines = batchResult.translations;
+          if (batchResult.detectedLang) {
+            detectedLang = batchResult.detectedLang;
+          }
+        } catch (batchArrayError) {
+          warn("Batch-array translation unavailable, falling back to marker batching:", batchArrayError);
+        }
       }
-      if (translatedLines.length !== uncachedLines.length) {
-        throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines.length}. API might have stripped delimiters.`);
+      if (!translatedLines) {
+        const { combinedText, markerNonce } = buildMarkedBatchPayload(uncachedLines.map((l) => l.text));
+        const result = await retryWithBackoff(() => translateText(combinedText, targetLang));
+        translatedLines = parseMarkedBatchResponse(result.translatedText, uncachedLines.length, markerNonce) || parseBatchTextFallbacks(result.translatedText, uncachedLines.length);
+        if (result.detectedLanguage) {
+          detectedLang = result.detectedLanguage;
+        }
+      }
+      if ((!translatedLines || translatedLines.length !== uncachedLines.length) && uncachedLines.length > 1) {
+        warn(`Primary batch parse failed for ${uncachedLines.length} lines, trying chunked batch mode (${BATCH_CHUNK_SIZE}/request)`);
+        const chunked = await translateChunkedBatch(uncachedLines.map((l) => l.text), targetLang);
+        translatedLines = chunked.translations;
+        if (chunked.detectedLang) {
+          detectedLang = chunked.detectedLang;
+        }
+      }
+      if (!translatedLines || translatedLines.length !== uncachedLines.length) {
+        throw new Error(`Batch translation mismatch: Sent ${uncachedLines.length} lines, got ${translatedLines?.length ?? 0}. API might have stripped delimiters.`);
       }
       uncachedLines.forEach((item, i) => {
-        const translation = translatedLines[i]?.trim() || item.text;
+        const normalized = normalizeTranslatedLine(translatedLines[i] || "");
+        const translation = normalized || item.text;
+        cacheTranslation(item.text, targetLang, translation, preferredApi);
         cachedResults.set(item.index, {
           originalText: item.text,
           translatedText: translation,
           targetLanguage: targetLang,
-          wasTranslated: result.wasTranslated && translation !== item.text
+          wasTranslated: translation !== item.text
         });
       });
     } catch (error2) {
@@ -1664,7 +1824,7 @@ var SpicyLyricTranslater = (() => {
     translatedLine.classList.toggle("NotSung", !isActive && isNotSung);
     translatedLine.classList.toggle("OppositeAligned", originalLine.classList.contains("OppositeAligned"));
     translatedLine.classList.toggle("rtl", originalLine.classList.contains("rtl"));
-    translatedLine.style.setProperty("--gradient-degrees", lyricsType === "Line" ? "180deg" : "90deg");
+    translatedLine.style.setProperty("--gradient-degrees", "180deg");
     for (const prop of MIRRORED_LINE_STYLE_PROPS) {
       if (prop === "--gradient-degrees")
         continue;
@@ -1690,6 +1850,7 @@ var SpicyLyricTranslater = (() => {
     let sungCount = 0;
     let activeWordIndex = -1;
     let activeWordGradient = 0;
+    let hasAnyGradientData = false;
     for (let i = 0; i < originalWords.length; i++) {
       const wordEl = originalWords[i];
       let gradientValue = NaN;
@@ -1711,6 +1872,7 @@ var SpicyLyricTranslater = (() => {
         gradientValue = parseFloat(wordEl.style.getPropertyValue("--gradient-position"));
       }
       if (!isNaN(gradientValue)) {
+        hasAnyGradientData = true;
         if (gradientValue >= 90) {
           sungCount = i + 1;
         } else if (gradientValue > -15) {
@@ -1718,6 +1880,9 @@ var SpicyLyricTranslater = (() => {
           activeWordGradient = Math.max(0, Math.min(1, (gradientValue + 20) / 120));
         }
       }
+    }
+    if (!hasAnyGradientData) {
+      return null;
     }
     if (activeWordIndex >= 0) {
       return (activeWordIndex + activeWordGradient) / originalWords.length;
@@ -1774,7 +1939,29 @@ var SpicyLyricTranslater = (() => {
       }
       groupedTranslatedWordIndexes.get(mappedIndex).push(index);
     });
+    const hasWordLevelGradient = originalWordGradients.some((value) => !isNaN(value));
+    const perWordGradientDegrees = hasWordLevelGradient ? "90deg" : "180deg";
+    if (!hasWordLevelGradient && overallProgress === null) {
+      const lineGradientRaw = originalLine.style.getPropertyValue("--gradient-position").trim();
+      const lineGradient = lineGradientRaw ? parseFloat(lineGradientRaw) : NaN;
+      const fallbackGradient = !isNaN(lineGradient) ? Math.max(-20, Math.min(100, lineGradient)) : isSung ? 100 : isNotSung ? -20 : isActive ? 40 : -20;
+      translatedWords.forEach((wordEl) => {
+        wordEl.style.setProperty("--gradient-degrees", perWordGradientDegrees);
+        wordEl.dataset.sltGradientPos = fallbackGradient.toString();
+        wordEl.style.setProperty("--gradient-position", `${fallbackGradient}%`);
+        const isWordSung = fallbackGradient >= 90;
+        const isWordActive = fallbackGradient > -15 && fallbackGradient < 90;
+        wordEl.classList.toggle("slt-word-past", isWordSung);
+        wordEl.classList.toggle("slt-word-active", isWordActive);
+        wordEl.classList.toggle("slt-word-future", !isWordSung && !isWordActive);
+        wordEl.classList.toggle("word-sung", isWordSung);
+        wordEl.classList.toggle("word-active", isWordActive);
+        wordEl.classList.toggle("word-notsng", !isWordSung && !isWordActive);
+      });
+      return true;
+    }
     translatedWords.forEach((wordEl, i) => {
+      wordEl.style.setProperty("--gradient-degrees", perWordGradientDegrees);
       let gradientPosition = -20;
       const previousGradient = parseFloat(wordEl.dataset.sltGradientPos || "NaN");
       const wasLatchedWhite = wordEl.dataset.sltLatchedWhite === "1";
@@ -2470,7 +2657,7 @@ body.SpicySidebarLyrics__Active #SpicyLyricsPage .slt-interleaved-translation {
     --text-shadow-opacity: 0%;
     text-shadow: 0 0 var(--text-shadow-blur-radius) rgba(255, 255, 255, var(--text-shadow-opacity));
     
-    --gradient-degrees: 90deg;
+    --gradient-degrees: 180deg;
     --gradient-alpha: 0.85;
     --gradient-alpha-end: 0.5;
     --gradient-position: -20%;
@@ -2911,7 +3098,7 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
     --text-shadow-blur-radius: 4px;
     --text-shadow-opacity: 0%;
     text-shadow: 0 0 var(--text-shadow-blur-radius) rgba(255, 255, 255, var(--text-shadow-opacity));
-    --gradient-degrees: 90deg;
+    --gradient-degrees: 180deg;
     --gradient-alpha: 0.85;
     --gradient-alpha-end: 0.5;
     --gradient-position: -20%;
@@ -3079,7 +3266,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
     if (metadata?.LoadedVersion) {
       return metadata.LoadedVersion;
     }
-    return true ? "1.8.0" : "0.0.0";
+    return true ? "1.8.1" : "0.0.0";
   };
   var CURRENT_VERSION = getLoadedVersion();
   var GITHUB_REPO = "7xeh/SpicyLyricTranslate";
@@ -3094,7 +3281,48 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
   };
   var hasShownUpdateNotice = false;
   var lastCheckTime = 0;
-  var CHECK_INTERVAL_MS = 5 * 60 * 1e3;
+  var MIN_CHECK_INTERVAL_MS = 15 * 60 * 1e3;
+  var DEFAULT_CHECK_INTERVAL_MS = 30 * 60 * 1e3;
+  var MAX_BACKOFF_MS = 2 * 60 * 60 * 1e3;
+  var REQUEST_TIMEOUT_MS = 6e3;
+  var SCHEDULE_JITTER_MS = 2 * 60 * 1e3;
+  var currentCheckIntervalMs = DEFAULT_CHECK_INTERVAL_MS;
+  var currentBackoffMs = 0;
+  var checkTimer = null;
+  var checkInProgress = false;
+  async function fetchWithTimeout(input, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(input, {
+        ...init,
+        signal: controller.signal
+      });
+      return response;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  function getScheduledDelay(baseMs) {
+    const normalizedBase = Math.max(MIN_CHECK_INTERVAL_MS, baseMs);
+    const jitter = Math.floor(Math.random() * SCHEDULE_JITTER_MS);
+    return normalizedBase + jitter + currentBackoffMs;
+  }
+  function scheduleNextCheck(forceDelayMs) {
+    if (checkTimer !== null) {
+      window.clearTimeout(checkTimer);
+    }
+    const delay = typeof forceDelayMs === "number" ? Math.max(1e3, forceDelayMs) : getScheduledDelay(currentCheckIntervalMs);
+    checkTimer = window.setTimeout(() => {
+      checkForUpdates();
+    }, delay);
+  }
+  function increaseBackoff() {
+    currentBackoffMs = currentBackoffMs === 0 ? 5 * 60 * 1e3 : Math.min(MAX_BACKOFF_MS, currentBackoffMs * 2);
+  }
+  function resetBackoff() {
+    currentBackoffMs = 0;
+  }
   function parseVersion(version) {
     const cleanVersion = version.replace(/^v/, "");
     const match = cleanVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -3143,7 +3371,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
       debug("Could not fetch GitHub release notes:", e);
     }
     try {
-      const response = await fetch(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
+      const response = await fetchWithTimeout(`${UPDATE_API_URL}?action=version&_=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
         const version = parseVersion(data.version);
@@ -3180,7 +3408,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
       }
     }
     try {
-      const response = await fetch(GITHUB_API_URL, {
+      const response = await fetchWithTimeout(GITHUB_API_URL, {
         headers: {
           "Accept": "application/vnd.github.v3+json"
         }
@@ -3203,354 +3431,94 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
       return null;
     }
   }
-  async function performUpdate(release, version, modalContent) {
-    if (updateState.isUpdating)
+  async function performSilentAutoUpdate(version) {
+    if (updateState.isUpdating) {
       return;
-    updateState.isUpdating = true;
-    updateState.progress = 0;
-    updateState.status = "Preparing update...";
-    const progressContainer = modalContent.querySelector(".update-progress");
-    const progressBar = modalContent.querySelector(".progress-bar-fill");
-    const progressText = modalContent.querySelector(".progress-text");
-    const buttonsContainer = modalContent.querySelector(".update-buttons");
-    if (progressContainer) {
-      progressContainer.style.display = "block";
     }
-    if (buttonsContainer) {
-      buttonsContainer.style.display = "none";
-    }
-    const updateProgress = () => {
-      if (progressBar) {
-        progressBar.style.width = `${updateState.progress}%`;
-      }
-      if (progressText) {
-        progressText.textContent = updateState.status;
-      }
-    };
     try {
+      updateState.isUpdating = true;
+      updateState.progress = 100;
+      updateState.status = "Reloading to apply update";
       storage.set("pending-update-version", version.text);
       storage.set("pending-update-timestamp", Date.now().toString());
-      updateState.progress = 30;
-      updateState.status = "Preparing to update...";
-      updateProgress();
-      await new Promise((r) => setTimeout(r, 500));
-      updateState.progress = 60;
-      updateState.status = "Ready to reload...";
-      updateProgress();
-      await new Promise((r) => setTimeout(r, 500));
-      updateState.progress = 100;
-      updateState.status = "Reloading Spotify...";
-      updateProgress();
-      await new Promise((r) => setTimeout(r, 300));
       if (window._spicy_lyric_translater_metadata) {
         window._spicy_lyric_translater_metadata = {};
       }
-      window.location.reload();
-    } catch (error2) {
-      error("Update failed:", error2);
-      updateState.status = "Update failed";
-      updateProgress();
-      if (progressContainer && buttonsContainer) {
-        progressContainer.innerHTML = `
-                <div class="update-error">
-                    <span class="error-icon">\u274C</span>
-                    <span class="error-text">Update failed. Please try restarting Spotify.</span>
-                </div>
-            `;
-        buttonsContainer.style.display = "flex";
-        buttonsContainer.innerHTML = `
-                <button class="update-btn secondary" id="slt-update-cancel">Cancel</button>
-                <button class="update-btn primary" id="slt-reload-now">Reload Now</button>
-            `;
-        setTimeout(() => {
-          const cancelBtn = document.getElementById("slt-update-cancel");
-          const reloadBtn = document.getElementById("slt-reload-now");
-          if (cancelBtn) {
-            cancelBtn.addEventListener("click", () => {
-              Spicetify.PopupModal.hide();
-              updateState.isUpdating = false;
-            });
-          }
-          if (reloadBtn) {
-            reloadBtn.addEventListener("click", () => {
-              window.location.reload();
-            });
-          }
-        }, 100);
-      }
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 350);
+    } catch (e) {
+      error("Silent auto-update failed:", e);
       updateState.isUpdating = false;
     }
   }
-  function showUpdateModal(currentVersion, latestVersion, release) {
-    const content = document.createElement("div");
-    content.className = "slt-update-modal";
-    content.innerHTML = `
-        <style>
-            .slt-update-modal {
-                padding: 16px;
-                color: var(--spice-text);
-            }
-            .slt-update-modal .update-header {
-                font-size: 16px;
-                font-weight: 600;
-                margin-bottom: 16px;
-                color: var(--spice-text);
-            }
-            .slt-update-modal .version-info {
-                background: var(--spice-card);
-                padding: 12px 16px;
-                border-radius: 8px;
-                margin-bottom: 16px;
-            }
-            .slt-update-modal .version-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 8px;
-            }
-            .slt-update-modal .version-row:last-child {
-                margin-bottom: 0;
-            }
-            .slt-update-modal .version-label {
-                color: var(--spice-subtext);
-            }
-            .slt-update-modal .version-value {
-                font-weight: 600;
-                color: var(--spice-text);
-            }
-            .slt-update-modal .version-new {
-                color: #1db954;
-            }
-            .slt-update-modal .release-notes {
-                background: var(--spice-card);
-                padding: 12px 16px;
-                border-radius: 8px;
-                margin-bottom: 16px;
-                max-height: 250px;
-                overflow-y: auto;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            .slt-update-modal .release-notes::-webkit-scrollbar {
-                width: 6px;
-            }
-            .slt-update-modal .release-notes::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .slt-update-modal .release-notes::-webkit-scrollbar-thumb {
-                background: rgba(255, 255, 255, 0.2);
-                border-radius: 3px;
-            }
-            .slt-update-modal .release-notes::-webkit-scrollbar-thumb:hover {
-                background: rgba(255, 255, 255, 0.3);
-            }
-            .slt-update-modal .release-notes-title {
-                font-weight: 600;
-                margin-bottom: 12px;
-                color: var(--spice-text);
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .slt-update-modal .release-notes-title::before {
-                content: '\u{1F4CB}';
-            }
-            .slt-update-modal .release-notes-content {
-                color: var(--spice-subtext);
-                font-size: 13px;
-                line-height: 1.6;
-            }
-            .slt-update-modal .update-progress {
-                display: none;
-                background: var(--spice-card);
-                padding: 16px;
-                border-radius: 8px;
-                margin-bottom: 16px;
-            }
-            .slt-update-modal .progress-bar {
-                height: 8px;
-                background: var(--spice-button);
-                border-radius: 4px;
-                overflow: hidden;
-                margin-bottom: 8px;
-            }
-            .slt-update-modal .progress-bar-fill {
-                height: 100%;
-                background: #1db954;
-                border-radius: 4px;
-                transition: width 0.3s ease;
-                width: 0%;
-            }
-            .slt-update-modal .progress-text {
-                font-size: 13px;
-                color: var(--spice-subtext);
-                text-align: center;
-            }
-            .slt-update-modal .update-success {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                color: #1db954;
-            }
-            .slt-update-modal .update-error {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                color: #e74c3c;
-            }
-            .slt-update-modal .success-icon,
-            .slt-update-modal .error-icon {
-                font-size: 20px;
-            }
-            .slt-update-modal .update-buttons {
-                display: flex;
-                gap: 12px;
-                justify-content: flex-end;
-            }
-            .slt-update-modal .update-btn {
-                padding: 10px 20px;
-                border-radius: 20px;
-                border: none;
-                cursor: pointer;
-                font-size: 14px;
-                font-weight: 600;
-                transition: all 0.2s;
-            }
-            .slt-update-modal .update-btn.primary {
-                background: #1db954;
-                color: #000;
-            }
-            .slt-update-modal .update-btn.primary:hover {
-                background: #1ed760;
-                transform: scale(1.02);
-            }
-            .slt-update-modal .update-btn.secondary {
-                background: var(--spice-card);
-                color: var(--spice-text);
-            }
-            .slt-update-modal .update-btn.secondary:hover {
-                background: var(--spice-button);
-            }
-            .slt-update-modal .update-instructions {
-                background: var(--spice-card);
-                border-radius: 8px;
-                padding: 16px;
-                margin-top: 16px;
-            }
-            .slt-update-modal .update-instructions p {
-                margin: 0 0 12px 0;
-                color: var(--spice-text);
-            }
-            .slt-update-modal .update-instructions code {
-                background: rgba(0, 0, 0, 0.3);
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-family: 'Fira Code', 'Consolas', monospace;
-                font-size: 12px;
-                color: #1db954;
-                word-break: break-all;
-            }
-            .slt-update-modal .update-instructions ol {
-                margin: 0;
-                padding-left: 20px;
-                color: var(--spice-subtext);
-            }
-            .slt-update-modal .update-instructions li {
-                margin-bottom: 8px;
-                line-height: 1.5;
-            }
-            .slt-update-modal .update-instructions li:last-child {
-                margin-bottom: 0;
-            }
-            .slt-update-modal .update-instructions li code {
-                display: inline-block;
-            }
-        </style>
-        <div class="update-header">\u{1F389} A new version is available!</div>
-        <div class="version-info">
-            <div class="version-row">
-                <span class="version-label">Current Version:</span>
-                <span class="version-value">${currentVersion.text}</span>
-            </div>
-            <div class="version-row">
-                <span class="version-label">Latest Version:</span>
-                <span class="version-value version-new">${latestVersion.text}</span>
-            </div>
-        </div>
-        <div class="release-notes">
-            <div class="release-notes-title">Changelog</div>
-            <div class="release-notes-content">${formatReleaseNotes(release.body)}</div>
-        </div>
-        <div class="update-progress">
-            <div class="progress-bar">
-                <div class="progress-bar-fill"></div>
-            </div>
-            <div class="progress-text">Starting update...</div>
-        </div>
-        <div class="update-buttons">
-            <button class="update-btn secondary" id="slt-update-later">Later</button>
-            <button class="update-btn primary" id="slt-update-now">Install Update</button>
-        </div>
-    `;
-    if (Spicetify.PopupModal) {
-      Spicetify.PopupModal.display({
-        title: "Spicy Lyric Translater - Update Available",
-        content,
-        isLarge: true
-      });
-      setTimeout(() => {
-        const laterBtn = document.getElementById("slt-update-later");
-        const updateBtn = document.getElementById("slt-update-now");
-        if (laterBtn) {
-          laterBtn.addEventListener("click", () => {
-            Spicetify.PopupModal.hide();
-          });
-        }
-        if (updateBtn) {
-          updateBtn.addEventListener("click", () => {
-            performUpdate(release, latestVersion, content);
-          });
-        }
-      }, 100);
-    }
-  }
-  function formatReleaseNotes(body) {
-    if (!body || body.trim() === "") {
-      return '<span style="color: var(--spice-subtext); font-style: italic;">No changelog available for this release.</span>';
-    }
-    return body.replace(/^### (.*)/gm, '<div style="font-weight: 600; margin-top: 12px; margin-bottom: 6px; color: var(--spice-text);">$1</div>').replace(/^## (.*)/gm, '<div style="font-weight: 600; font-size: 14px; margin-top: 14px; margin-bottom: 8px; color: var(--spice-text);">$1</div>').replace(/^# (.*)/gm, '<div style="font-weight: 700; font-size: 15px; margin-top: 16px; margin-bottom: 10px; color: var(--spice-text);">$1</div>').replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>").replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #1db954;">$1</code>').replace(/^- (.*)/gm, '<div style="display: flex; gap: 8px; margin: 4px 0;"><span style="color: #1db954;">\u2022</span><span>$1</span></div>').replace(/^\* (.*)/gm, '<div style="display: flex; gap: 8px; margin: 4px 0;"><span style="color: #1db954;">\u2022</span><span>$1</span></div>').replace(/\n\n/g, '<div style="height: 8px;"></div>').replace(/\n/g, "");
-  }
   async function checkForUpdates(force = false) {
     const now = Date.now();
-    if (!force && now - lastCheckTime < CHECK_INTERVAL_MS) {
+    if (checkInProgress) {
+      return;
+    }
+    if (!force && now - lastCheckTime < MIN_CHECK_INTERVAL_MS) {
+      scheduleNextCheck(MIN_CHECK_INTERVAL_MS - (now - lastCheckTime));
+      return;
+    }
+    if (!force && document.hidden) {
+      scheduleNextCheck();
+      return;
+    }
+    if (!force && navigator.onLine === false) {
+      increaseBackoff();
+      scheduleNextCheck();
       return;
     }
     lastCheckTime = now;
-    if (!force && hasShownUpdateNotice) {
-      return;
-    }
+    checkInProgress = true;
     try {
       const latest = await getLatestVersion();
-      if (!latest)
+      if (!latest) {
+        increaseBackoff();
         return;
+      }
       const current = getCurrentVersion();
       if (compareVersions(latest.version, current) > 0) {
         debug(`Update available: ${current.text} \u2192 ${latest.version.text}`);
-        showUpdateModal(current, latest.version, latest.release);
+        if (!hasShownUpdateNotice) {
+          hasShownUpdateNotice = true;
+          info(`Auto-updating Spicy Lyric Translater to ${latest.version.text}`);
+        }
+        await performSilentAutoUpdate(latest.version);
         hasShownUpdateNotice = true;
       } else {
         debug("Already on latest version:", current.text);
+        resetBackoff();
+        hasShownUpdateNotice = false;
       }
     } catch (error2) {
+      increaseBackoff();
       error("Error checking for updates:", error2);
+    } finally {
+      checkInProgress = false;
+      if (!updateState.isUpdating) {
+        scheduleNextCheck();
+      }
     }
   }
-  function startUpdateChecker(intervalMs = 30 * 60 * 1e3) {
-    setTimeout(() => {
-      checkForUpdates();
-    }, 5e3);
-    setInterval(() => {
-      checkForUpdates();
-    }, intervalMs);
+  function startUpdateChecker(intervalMs = DEFAULT_CHECK_INTERVAL_MS) {
+    currentCheckIntervalMs = Math.max(MIN_CHECK_INTERVAL_MS, intervalMs);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        const elapsed = Date.now() - lastCheckTime;
+        if (elapsed >= MIN_CHECK_INTERVAL_MS && !checkInProgress && !updateState.isUpdating) {
+          checkForUpdates();
+        }
+      }
+    });
+    window.addEventListener("online", () => {
+      if (!checkInProgress && !updateState.isUpdating) {
+        resetBackoff();
+        checkForUpdates();
+      }
+    });
+    scheduleNextCheck(5e3);
     info("Update checker started");
   }
   async function getUpdateInfo() {
@@ -3752,7 +3720,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
         return `<span style="font-size:12px;">Disconnected</span>`;
     }
   }
-  async function fetchWithTimeout(url, options = {}, timeout = CONNECTION_TIMEOUT) {
+  async function fetchWithTimeout2(url, options = {}, timeout = CONNECTION_TIMEOUT) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
@@ -3767,7 +3735,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
   async function measureLatency() {
     try {
       const startTime = performance.now();
-      const response = await fetchWithTimeout(`${API_BASE}?action=ping&_=${Date.now()}`);
+      const response = await fetchWithTimeout2(`${API_BASE}?action=ping&_=${Date.now()}`);
       if (!response.ok)
         return null;
       await response.json();
@@ -3786,7 +3754,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
         version: storage.get("extension-version") || "1.0.0",
         active: indicatorState.isViewingLyrics ? "true" : "false"
       });
-      const response = await fetchWithTimeout(`${API_BASE}?${params}`);
+      const response = await fetchWithTimeout2(`${API_BASE}?${params}`);
       if (!response.ok)
         throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -3817,7 +3785,7 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
         action: "connect",
         version: storage.get("extension-version") || "1.0.0"
       });
-      const response = await fetchWithTimeout(`${API_BASE}?${params}`);
+      const response = await fetchWithTimeout2(`${API_BASE}?${params}`);
       if (!response.ok)
         throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -4492,6 +4460,28 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
       }
     });
     try {
+      let domLineTexts = [];
+      lines.forEach((line) => domLineTexts.push(extractLineText2(line)));
+      const nonEmptyDomTexts = domLineTexts.filter((t) => t.trim().length > 0);
+      if (nonEmptyDomTexts.length === 0) {
+        state.isTranslating = false;
+        restoreButtonState();
+        return;
+      }
+      const currentTrackUri2 = getCurrentTrackUri();
+      const preApiSkipCheck = await shouldSkipTranslation(nonEmptyDomTexts, state.targetLanguage, currentTrackUri2 || void 0);
+      if (preApiSkipCheck.detectedLanguage) {
+        state.detectedLanguage = preApiSkipCheck.detectedLanguage;
+      }
+      if (preApiSkipCheck.skip) {
+        state.isTranslating = false;
+        state.lastTranslatedSongUri = currentTrackUri2;
+        restoreButtonState();
+        if (state.showNotifications && Spicetify.showNotification) {
+          Spicetify.showNotification(preApiSkipCheck.reason || "Lyrics already in target language");
+        }
+        return;
+      }
       let apiLineTexts = null;
       let apiLanguage;
       let apiLineData = null;
@@ -4506,8 +4496,6 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
       } catch (apiErr) {
         warn("SpicyLyrics API fetch failed, falling back to DOM:", apiErr);
       }
-      let domLineTexts = [];
-      lines.forEach((line) => domLineTexts.push(extractLineText2(line)));
       let apiVocalTexts = null;
       let apiVocalLineData = null;
       if (apiLineTexts && apiLineData) {
@@ -4583,7 +4571,6 @@ body.SpicySidebarLyrics__Active .slt-sync-word.slt-word-active {
         restoreButtonState();
         return;
       }
-      const currentTrackUri2 = getCurrentTrackUri();
       const detectedLang = apiLanguage || state.detectedLanguage || void 0;
       const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri2 || void 0);
       if (skipCheck.detectedLanguage)

@@ -324,6 +324,33 @@ export async function translateCurrentLyrics(): Promise<void> {
     });
     
     try {
+        let domLineTexts: string[] = [];
+        lines.forEach(line => domLineTexts.push(extractLineText(line)));
+
+        const nonEmptyDomTexts = domLineTexts.filter(t => t.trim().length > 0);
+        if (nonEmptyDomTexts.length === 0) {
+            state.isTranslating = false;
+            restoreButtonState();
+            return;
+        }
+
+        const currentTrackUri = getCurrentTrackUri();
+        const preApiSkipCheck = await shouldSkipTranslation(nonEmptyDomTexts, state.targetLanguage, currentTrackUri || undefined);
+
+        if (preApiSkipCheck.detectedLanguage) {
+            state.detectedLanguage = preApiSkipCheck.detectedLanguage;
+        }
+
+        if (preApiSkipCheck.skip) {
+            state.isTranslating = false;
+            state.lastTranslatedSongUri = currentTrackUri;
+            restoreButtonState();
+            if (state.showNotifications && Spicetify.showNotification) {
+                Spicetify.showNotification(preApiSkipCheck.reason || 'Lyrics already in target language');
+            }
+            return;
+        }
+
         let apiLineTexts: string[] | null = null;
         let apiLanguage: string | undefined;
         let apiLineData: LyricLineData[] | null = null;
@@ -338,9 +365,6 @@ export async function translateCurrentLyrics(): Promise<void> {
         } catch (apiErr) {
             warn('SpicyLyrics API fetch failed, falling back to DOM:', apiErr);
         }
-        
-        let domLineTexts: string[] = [];
-        lines.forEach(line => domLineTexts.push(extractLineText(line)));
         
         let apiVocalTexts: string[] | null = null;
         let apiVocalLineData: LyricLineData[] | null = null;
@@ -427,7 +451,6 @@ export async function translateCurrentLyrics(): Promise<void> {
             return;
         }
         
-        const currentTrackUri = getCurrentTrackUri();
         const detectedLang = apiLanguage || state.detectedLanguage || undefined;
         const skipCheck = await shouldSkipTranslation(nonEmptyTexts, state.targetLanguage, currentTrackUri || undefined);
         

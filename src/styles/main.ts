@@ -204,7 +204,7 @@ export const styles = `
     --text-shadow-opacity: 0%;
     text-shadow: 0 0 var(--text-shadow-blur-radius) rgba(255, 255, 255, var(--text-shadow-opacity));
     
-    --gradient-degrees: 90deg;
+    --gradient-degrees: 180deg;
     --gradient-alpha: 0.85;
     --gradient-alpha-end: 0.5;
     --gradient-position: -20%;
@@ -645,7 +645,7 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
     --text-shadow-blur-radius: 4px;
     --text-shadow-opacity: 0%;
     text-shadow: 0 0 var(--text-shadow-blur-radius) rgba(255, 255, 255, var(--text-shadow-opacity));
-    --gradient-degrees: 90deg;
+    --gradient-degrees: 180deg;
     --gradient-alpha: 0.85;
     --gradient-alpha-end: 0.5;
     --gradient-position: -20%;

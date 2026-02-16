@@ -109,6 +109,15 @@ function getCurrentTrackId(): string | null {
     return null;
 }
 
+function getTrackIdFromUri(trackUri: string): string | null {
+    if (!trackUri || typeof trackUri !== 'string') {
+        return null;
+    }
+
+    const parts = trackUri.split(':');
+    return parts[parts.length - 1] || null;
+}
+
 
 function getSpicyLyricsVersion(): string {
     try {
@@ -372,6 +381,47 @@ export async function fetchLyricsFromAPI(): Promise<{ lines: string[]; lineData:
     }
 }
 
+export async function fetchLyricsForTrackUri(trackUri: string): Promise<{ lines: string[]; lineData: LyricLineData[]; language?: string } | null> {
+    const trackId = getTrackIdFromUri(trackUri);
+    if (!trackId) {
+        debug('No valid track ID in URI:', trackUri);
+        return null;
+    }
+
+    if (trackId === cachedTrackId && cachedLineData) {
+        return {
+            lines: cachedLineData.map(l => l.text),
+            lineData: cachedLineData,
+            language: cachedLanguage || undefined
+        };
+    }
+
+    try {
+        const lyrics = await querySpicyLyricsAPI(trackId);
+        if (!lyrics) {
+            return null;
+        }
+
+        const lineData = extractLinesData(lyrics);
+        if (lineData.length === 0) {
+            return null;
+        }
+
+        cachedTrackId = trackId;
+        cachedLineData = lineData;
+        cachedLanguage = lyrics.Language || null;
+
+        return {
+            lines: lineData.map(l => l.text),
+            lineData,
+            language: lyrics.Language || undefined
+        };
+    } catch (err) {
+        warn('Failed to fetch lyrics for track URI:', trackUri, err);
+        return null;
+    }
+}
+
 
 export function clearLyricsCache(): void {
     cachedTrackId = null;
@@ -381,6 +431,7 @@ export function clearLyricsCache(): void {
 
 export default {
     fetchLyricsFromAPI,
+    fetchLyricsForTrackUri,
     clearLyricsCache,
     getCachedLineData,
 };

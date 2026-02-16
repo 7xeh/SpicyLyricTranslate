@@ -9,6 +9,7 @@ import {
     deleteTrackCache,
     getCurrentTrackUri 
 } from './trackCache';
+import { detectLanguageHeuristic, isSameLanguage } from './languageDetection';
 
 export interface TranslationResult {
     originalText: string;
@@ -16,6 +17,7 @@ export interface TranslationResult {
     detectedLanguage?: string;
     targetLanguage: string;
     wasTranslated?: boolean;
+    source?: 'cache' | 'api';
 }
 
 export interface TranslationCache {
@@ -44,6 +46,128 @@ const BATCH_SEPARATOR = ' ||| ';
 const BATCH_SEPARATOR_REGEX = /\s*\|\|\|\s*/g;
 const BATCH_MARKER_PREFIX = '[[SLT_BATCH_';
 const BATCH_CHUNK_SIZE = 6;
+const NON_LATIN_SEGMENT_REGEX = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Greek}]+)/gu;
+
+function normalizeSourceLineForFingerprint(line: string): string {
+    return (line || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function computeSourceLyricsFingerprint(lines: string[]): string {
+    let hash = 2166136261;
+
+    for (const rawLine of lines) {
+        const line = normalizeSourceLineForFingerprint(rawLine);
+        const value = `${line}\u241E`;
+
+        for (let i = 0; i < value.length; i++) {
+            hash ^= value.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+    }
+
+    return `${lines.length}:${(hash >>> 0).toString(36)}`;
+}
+
+function hasMixedLatinAndNonLatin(text: string): boolean {
+    if (!text) return false;
+    const hasLatin = /[A-Za-z]/.test(text);
+    const hasNonLatin = NON_LATIN_SEGMENT_REGEX.test(text);
+    NON_LATIN_SEGMENT_REGEX.lastIndex = 0;
+    return hasLatin && hasNonLatin;
+}
+
+function normalizeComparisonText(value: string): string {
+    return (value || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getLatinSkeleton(text: string): string {
+    return normalizeComparisonText(
+        (text || '')
+            .replace(NON_LATIN_SEGMENT_REGEX, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+    );
+}
+
+function isSuspiciousMixedLineTranslation(source: string, translated: string): boolean {
+    if (!hasMixedLatinAndNonLatin(source)) return false;
+
+    const translatedNorm = normalizeComparisonText(translated);
+    const latinSkeleton = getLatinSkeleton(source);
+
+    if (!translatedNorm || !latinSkeleton) return false;
+
+    return translatedNorm === latinSkeleton;
+}
+
+async function repairMixedLineTranslation(source: string, translated: string, targetLang: string): Promise<string> {
+    if (!isSuspiciousMixedLineTranslation(source, translated)) {
+        return translated;
+    }
+
+    const segments = Array.from((source || '').matchAll(NON_LATIN_SEGMENT_REGEX)).map(match => match[0]);
+    if (segments.length === 0) {
+        return translated;
+    }
+
+    let repaired = source;
+    for (const segment of segments) {
+        if (!segment || segment.trim().length === 0) continue;
+        try {
+            const segmentResult = await translateText(segment, targetLang);
+            const replacement = normalizeTranslatedLine(segmentResult.translatedText || '').trim();
+            if (replacement) {
+                repaired = repaired.replace(segment, ` ${replacement} `);
+            }
+        } catch {
+        }
+    }
+
+    const normalizedRepaired = normalizeTranslatedLine(repaired || '').trim();
+    if (!normalizedRepaired || normalizedRepaired === source.trim()) {
+        return translated;
+    }
+
+    return normalizedRepaired;
+}
+
+function shouldInvalidateTrackCacheForMixedContent(
+    sourceLines: string[],
+    cachedTranslatedLines: string[],
+    targetLang: string
+): boolean {
+    if (sourceLines.length === 0 || cachedTranslatedLines.length !== sourceLines.length) {
+        return true;
+    }
+
+    let suspiciousUnchanged = 0;
+
+    for (let i = 0; i < sourceLines.length; i++) {
+        const sourceLine = normalizeSourceLineForFingerprint(sourceLines[i]);
+        const translatedLine = normalizeSourceLineForFingerprint(cachedTranslatedLines[i] || '');
+
+        if (!sourceLine || sourceLine.length < 3) {
+            continue;
+        }
+
+        if (sourceLine !== translatedLine) {
+            continue;
+        }
+
+        const detected = detectLanguageHeuristic(sourceLines[i]);
+        if (detected && detected.confidence >= 0.8 && !isSameLanguage(detected.code, targetLang)) {
+            suspiciousUnchanged++;
+        }
+    }
+
+    return suspiciousUnchanged >= 2;
+}
 
 async function rateLimitedDelay(): Promise<void> {
     const now = Date.now();
@@ -227,6 +351,24 @@ function getCachedTranslation(text: string, targetLang: string): string | null {
                 };
                 storage.setJSON('translation-cache', cache);
             }
+
+            if (isSuspiciousMixedLineTranslation(text, normalized)) {
+                delete cache[key];
+                storage.setJSON('translation-cache', cache);
+                debug(`Invalidated mixed-line cache for ${targetLang}: ${text.slice(0, 40)}`);
+                return null;
+            }
+
+            if (normalized === text) {
+                const detected = detectLanguageHeuristic(text);
+                if (detected && detected.confidence >= 0.8 && !isSameLanguage(detected.code, targetLang)) {
+                    delete cache[key];
+                    storage.setJSON('translation-cache', cache);
+                    debug(`Invalidated stale line cache for ${targetLang}: ${text.slice(0, 40)}`);
+                    return null;
+                }
+            }
+
             return normalized;
         }
     }
@@ -648,17 +790,29 @@ export async function translateLyrics(
     detectedSourceLang?: string
 ): Promise<TranslationResult[]> {
     const currentTrackUri = trackUri || getCurrentTrackUri();
+    const sourceFingerprint = computeSourceLyricsFingerprint(lines);
     
     if (currentTrackUri) {
         const trackCache = getTrackCache(currentTrackUri, targetLang);
         if (trackCache && trackCache.lines.length === lines.length) {
-            debug(`Full track cache hit: ${currentTrackUri} (${trackCache.lines.length} lines)`);
-            return lines.map((line, index) => ({
-                originalText: line,
-                translatedText: trackCache.lines[index] || line,
-                targetLanguage: targetLang,
-                wasTranslated: trackCache.lines[index] !== line
-            }));
+            if (trackCache.sourceFingerprint && trackCache.sourceFingerprint === sourceFingerprint) {
+                if (!shouldInvalidateTrackCacheForMixedContent(lines, trackCache.lines, targetLang)) {
+                    debug(`Full track cache hit: ${currentTrackUri} (${trackCache.lines.length} lines)`);
+                    return lines.map((line, index) => ({
+                        originalText: line,
+                        translatedText: trackCache.lines[index] || line,
+                        targetLanguage: targetLang,
+                        wasTranslated: trackCache.lines[index] !== line,
+                        source: 'cache'
+                    }));
+                }
+
+                deleteTrackCache(currentTrackUri, targetLang);
+                debug(`Invalidated mixed-content stale track cache for ${currentTrackUri}:${targetLang}`);
+            } else {
+                deleteTrackCache(currentTrackUri, targetLang);
+                debug(`Invalidated stale track cache for ${currentTrackUri}:${targetLang}`);
+            }
         }
     }
     
@@ -672,7 +826,8 @@ export async function translateLyrics(
                 originalText: line,
                 translatedText: line,
                 targetLanguage: targetLang,
-                wasTranslated: false
+                wasTranslated: false,
+                source: 'cache'
             });
         } else {
             const cached = getCachedTranslation(line, targetLang);
@@ -681,7 +836,8 @@ export async function translateLyrics(
                     originalText: line,
                     translatedText: cached,
                     targetLanguage: targetLang,
-                    wasTranslated: cached !== line
+                    wasTranslated: cached !== line,
+                    source: 'cache'
                 });
             } else {
                 uncachedLines.push({ index, text: line });
@@ -695,7 +851,7 @@ export async function translateLyrics(
         
         if (currentTrackUri) {
             const translatedLines = finalResults.map(r => r.translatedText);
-            setTrackCache(currentTrackUri, targetLang, detectedSourceLang || 'auto', translatedLines, preferredApi);
+            setTrackCache(currentTrackUri, targetLang, detectedSourceLang || 'auto', translatedLines, preferredApi, sourceFingerprint);
         }
         
         return finalResults;
@@ -746,16 +902,30 @@ export async function translateLyrics(
         }
         
         uncachedLines.forEach((item, i) => {
-            const normalized = normalizeTranslatedLine(translatedLines[i] || '');
-            const translation = normalized || item.text;
-            cacheTranslation(item.text, targetLang, translation, preferredApi);
             cachedResults.set(item.index, {
                 originalText: item.text,
-                translatedText: translation,
+                translatedText: normalizeTranslatedLine(translatedLines[i] || '') || item.text,
                 targetLanguage: targetLang,
-                wasTranslated: translation !== item.text
+                wasTranslated: (normalizeTranslatedLine(translatedLines[i] || '') || item.text) !== item.text,
+                source: 'api'
             });
         });
+
+        for (const item of uncachedLines) {
+            const existing = cachedResults.get(item.index);
+            const initialTranslation = existing?.translatedText || item.text;
+            const repairedTranslation = await repairMixedLineTranslation(item.text, initialTranslation, targetLang);
+            const finalTranslation = normalizeTranslatedLine(repairedTranslation || '') || item.text;
+
+            cacheTranslation(item.text, targetLang, finalTranslation, preferredApi);
+            cachedResults.set(item.index, {
+                originalText: item.text,
+                translatedText: finalTranslation,
+                targetLanguage: targetLang,
+                wasTranslated: finalTranslation !== item.text,
+                source: 'api'
+            });
+        }
     } catch (error) {
         logError('Batch translation failed (fallback disabled to prevent rate limits):', error);
         
@@ -764,7 +934,8 @@ export async function translateLyrics(
                 originalText: item.text,
                 translatedText: item.text,
                 targetLanguage: targetLang,
-                wasTranslated: false
+                wasTranslated: false,
+                source: 'api'
             });
         }
     }
@@ -776,7 +947,7 @@ export async function translateLyrics(
     const someTranslated = results.some(r => r.wasTranslated);
     if (currentTrackUri && results.length > 0 && someTranslated) {
         const translatedLines = results.map(r => r.translatedText);
-        setTrackCache(currentTrackUri, targetLang, detectedLang, translatedLines, preferredApi);
+        setTrackCache(currentTrackUri, targetLang, detectedLang, translatedLines, preferredApi, sourceFingerprint);
     }
     
     return results;

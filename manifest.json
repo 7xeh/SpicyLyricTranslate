@@ -3,7 +3,7 @@
   "name": "Spicy Lyric Translater",
   "description": "A Spicetify extension that adds real-time translation to Spicy Lyrics.",
   "author": "7xeh",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "main": "loader/SLT-loader.js",
   "preview": "https://github.com/7xeh/SpicyLyricTranslate/blob/main/preview.png?raw=true",
   "readme": "README.md",
@@ -11,5 +11,21 @@
   "repository": "https://github.com/7xeh/SpicyLyricTranslate",
   "spicetify": {
     "minVersion": "2.0.0"
-  }
+  },
+  "tags": [
+    "translation",
+    "real-time",
+    "spicetify-extension",
+    "lyrics",
+    "spicy-lyrics",
+    "syllable-timed",
+    "karaoke",
+    "romanization",
+    "romaji",
+    "pinyin",
+    "multilingual",
+    "synchronized",
+    "performance",
+    "customizable"
+  ]
 }

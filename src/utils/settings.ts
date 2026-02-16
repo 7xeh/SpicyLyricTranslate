@@ -2,12 +2,85 @@ import { storage } from './storage';
 import { state } from './state';
 import { SUPPORTED_LANGUAGES, clearTranslationCache, setPreferredApi } from './translator';
 import { debug, info, isDebugEnabled, setDebugMode } from './debug';
-import { getTrackCacheStats, getAllCachedTracks, deleteTrackCache, clearAllTrackCache } from './trackCache';
+import { getTrackCacheStats, getAllCachedTracks, deleteTrackCache, clearAllTrackCache, getTrackCache } from './trackCache';
 import { VERSION, REPO_URL, checkForUpdates, getUpdateInfo } from './updater';
 import { OverlayMode } from './translationOverlay';
 import { reapplyTranslations } from './core';
+import { fetchLyricsForTrackUri } from './lyricsFetcher';
 
 const SETTINGS_ID = 'spicy-lyric-translater-settings';
+
+function areDevToolsEnabled(): boolean {
+    const hasDeveloperSettingsSection = !!document.getElementById('spicy-lyrics-dev-settings');
+
+    try {
+        const isTruthy = (value: unknown): boolean => {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'number') return value === 1;
+            if (typeof value === 'string') {
+                const normalized = value.trim().toLowerCase();
+                return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on' || normalized === 'enabled';
+            }
+            return false;
+        };
+
+        const platformConfig = (Spicetify as any)?.Platform?.Config;
+        const globalConfig = (Spicetify as any)?.Config;
+        const platform = (Spicetify as any)?.Platform;
+
+        const runtimeFlag = [
+            platform?.DeveloperMode,
+            platform?.developerMode,
+            platform?.DevTools,
+            platform?.devTools,
+            platform?.isDeveloper,
+            platform?.isDeveloperMode,
+            platform?.isDev,
+            (window as any)?.Spicetify?.DeveloperMode,
+            (window as any)?.Spicetify?.isDeveloper,
+            (window as any)?.Spicetify?.isDev
+        ].some(isTruthy);
+
+        const configFlag = [
+            platformConfig?.enableDeveloperMode ??
+            platformConfig?.developerMode ??
+            platformConfig?.devTools ??
+            platformConfig?.isDeveloper ??
+            platformConfig?.isDev ??
+            platformConfig?.['app.enable-developer-mode'] ??
+            globalConfig?.enableDeveloperMode ??
+            globalConfig?.developerMode ??
+            globalConfig?.devTools ??
+            globalConfig?.isDeveloper ??
+            globalConfig?.isDev
+        ].some(isTruthy);
+
+        const localStorageKeys = [
+            'spicetify-enable-devtools',
+            'spicetify_developer_mode',
+            'spicetify:enable-devtools',
+            'spicetify:developer-mode',
+            'developer-mode',
+            'devtools',
+            'app.enable-developer-mode',
+            'app.developer-mode'
+        ];
+
+        const webStorageFlag = localStorageKeys.some((key) => {
+            const value = window.localStorage?.getItem(key);
+            return isTruthy(value);
+        });
+
+        const spicetifyStorageFlag = localStorageKeys.some((key) => {
+            const value = (Spicetify as any)?.LocalStorage?.get?.(key);
+            return isTruthy(value);
+        });
+
+        return hasDeveloperSettingsSection || runtimeFlag || configFlag || webStorageFlag || spicetifyStorageFlag;
+    } catch (e) {
+        return hasDeveloperSettingsSection;
+    }
+}
 
 function createNativeToggle(id: string, label: string, checked: boolean, onChange: (checked: boolean) => void): HTMLElement {
     const row = document.createElement('div');
@@ -173,14 +246,16 @@ function createNativeSettingsSection(): HTMLElement {
         }
     ));
     
-    sectionContent.appendChild(createNativeToggle(
-        'slt-settings.debug-mode',
-        'Debug Mode (Console Logging)',
-        storage.get('debug-mode') === 'true',
-        (checked) => {
-            setDebugMode(checked);
-        }
-    ));
+    if (areDevToolsEnabled()) {
+        sectionContent.appendChild(createNativeToggle(
+            'slt-settings.debug-mode',
+            'Debug Mode (Console Logging)',
+            storage.get('debug-mode') === 'true',
+            (checked) => {
+                setDebugMode(checked);
+            }
+        ));
+    }
     
     sectionContent.appendChild(createNativeButton(
         'slt-settings.view-cache',
@@ -266,10 +341,6 @@ function createNativeSettingsSection(): HTMLElement {
 }
 
 function injectSettingsIntoPage(): void {
-    if (document.getElementById(SETTINGS_ID)) {
-        return;
-    }
-    
     const settingsContainer = document.querySelector('.x-settings-container') || 
                               document.querySelector('[data-testid="settings-page"]') ||
                               document.querySelector('main.x-settings-container');
@@ -277,10 +348,16 @@ function injectSettingsIntoPage(): void {
         debug('Settings container not found');
         return;
     }
+
+    const existingSettingsSection = document.getElementById(SETTINGS_ID);
+    const sectionAlreadyInContainer = !!existingSettingsSection && settingsContainer.contains(existingSettingsSection);
+    if (sectionAlreadyInContainer) {
+        return;
+    }
     
     debug('Found settings container, injecting settings...');
     
-    const settingsSection = createNativeSettingsSection();
+    const settingsSection = existingSettingsSection || createNativeSettingsSection();
     
     const spicyLyricsSettings = document.getElementById('spicy-lyrics-settings');
     const spicyLyricsDevSettings = document.getElementById('spicy-lyrics-dev-settings');
@@ -374,34 +451,42 @@ function watchForSettingsPage(): void {
 }
 
 function createSettingsUI(): HTMLElement {
+    const showDebugToggle = areDevToolsEnabled();
+
     const container = document.createElement('div');
     container.className = 'slt-settings-container';
     container.innerHTML = `
         <style>
             .slt-settings-container {
-                padding: 16px;
+                padding: 20px;
                 display: flex;
                 flex-direction: column;
-                gap: 16px;
+                gap: 18px;
+                width: min(760px, 92vw);
+                max-width: 100%;
+                max-height: 78vh;
+                box-sizing: border-box;
+                overflow-x: hidden;
+                overflow-y: auto;
             }
             .slt-setting-row {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 10px;
             }
             .slt-setting-row label {
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: 500;
                 color: var(--spice-text);
             }
             .slt-setting-row select,
             .slt-setting-row input[type="text"] {
-                padding: 8px 12px;
+                padding: 10px 14px;
                 border-radius: 4px;
                 border: 1px solid var(--spice-button-disabled);
                 background: var(--spice-card);
                 color: var(--spice-text);
-                font-size: 14px;
+                font-size: 15px;
             }
             .slt-setting-row select:focus,
             .slt-setting-row input[type="text"]:focus {
@@ -409,9 +494,20 @@ function createSettingsUI(): HTMLElement {
                 border-color: var(--spice-button);
             }
             .slt-toggle-row {
+                flex-direction: row;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                gap: 12px;
+            }
+            .slt-toggle-row > label:first-child {
+                margin: 0;
+                line-height: 1.35;
+                flex: 1;
+            }
+            .slt-toggle-row .slt-toggle {
+                margin-left: auto;
+                flex-shrink: 0;
             }
             .slt-toggle {
                 position: relative;
@@ -452,12 +548,12 @@ function createSettingsUI(): HTMLElement {
                 transform: translateX(20px);
             }
             .slt-button {
-                padding: 10px 20px;
+                padding: 11px 22px;
                 border-radius: 500px;
                 border: none;
                 background: var(--spice-button);
                 color: var(--spice-text);
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: 700;
                 cursor: pointer;
                 transition: transform 0.1s, background 0.2s;
@@ -470,9 +566,10 @@ function createSettingsUI(): HTMLElement {
                 transform: scale(0.98);
             }
             .slt-description {
-                font-size: 12px;
+                font-size: 13px;
                 color: var(--spice-subtext);
-                margin-top: -4px;
+                margin-top: 0;
+                line-height: 1.35;
             }
         </style>
         
@@ -525,6 +622,7 @@ function createSettingsUI(): HTMLElement {
             </label>
         </div>
         
+        ${showDebugToggle ? `
         <div class="slt-setting-row slt-toggle-row">
             <label for="slt-debug-mode">Debug Mode (Console Logging)</label>
             <label class="slt-toggle">
@@ -532,18 +630,19 @@ function createSettingsUI(): HTMLElement {
                 <span class="slt-toggle-slider"></span>
             </label>
         </div>
+        ` : ''}
         
         <div class="slt-setting-row">
             <button class="slt-button" id="slt-view-cache">View Translation Cache</button>
         </div>
         
-        <div class="slt-setting-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+        <div class="slt-setting-row" style="flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-                <span style="font-size: 13px; color: var(--spice-subtext);">Version ${VERSION}</span>
+                <span style="font-size: 14px; color: var(--spice-subtext);">Version ${VERSION}</span>
                 <span style="margin: 0 8px; color: var(--spice-subtext);">•</span>
-                <a href="${REPO_URL}" target="_blank" style="font-size: 13px; color: var(--spice-button);">GitHub</a>
+                <a href="${REPO_URL}" target="_blank" style="font-size: 14px; color: var(--spice-button);">GitHub</a>
             </div>
-            <button class="slt-button" id="slt-check-updates" style="padding: 8px 16px; font-size: 12px;">Check for Updates</button>
+            <button class="slt-button" id="slt-check-updates" style="padding: 9px 18px; font-size: 13px; white-space: nowrap;">Check for Updates</button>
         </div>
         
         <div class="slt-setting-row" style="padding-top: 0; opacity: 0.6;">
@@ -658,6 +757,233 @@ function formatDate(timestamp: number): string {
     });
 }
 
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getTrackIdFromUri(trackUri: string): string {
+    return trackUri.replace('spotify:track:', '');
+}
+
+async function playCachedTrack(trackUri: string): Promise<boolean> {
+    const playbackApi = (Spicetify as any)?.Platform?.PlaybackAPI;
+    const player = (Spicetify as any)?.Player;
+
+    try {
+        if (playbackApi?.playUri) {
+            await playbackApi.playUri(trackUri);
+            return true;
+        }
+        if (playbackApi?.playTrack) {
+            await playbackApi.playTrack(trackUri);
+            return true;
+        }
+        if (playbackApi?.play) {
+            await playbackApi.play(trackUri);
+            return true;
+        }
+        if (player?.playUri) {
+            await player.playUri(trackUri);
+            return true;
+        }
+        if (player?.origin?.playUri) {
+            await player.origin.playUri(trackUri);
+            return true;
+        }
+    } catch (e) {
+        debug('Direct playback API failed, trying Cosmos fallback:', e);
+    }
+
+    const cosmos = (Spicetify as any)?.CosmosAsync;
+    const cosmosAttempts: Array<{ url: string; body: any }> = [
+        {
+            url: 'sp://player/v2/main/command/play',
+            body: { uri: trackUri }
+        },
+        {
+            url: 'sp://player/v2/main/command/play',
+            body: {
+                context: { uri: trackUri },
+                playback: { initiatingCommand: 'play' }
+            }
+        }
+    ];
+
+    if (cosmos?.put) {
+        for (const attempt of cosmosAttempts) {
+            try {
+                await cosmos.put(attempt.url, attempt.body);
+                return true;
+            } catch (e) {
+                debug('Cosmos play attempt failed:', attempt.url, e);
+            }
+        }
+    }
+
+    try {
+        const trackId = getTrackIdFromUri(trackUri);
+        if (trackId && Spicetify.Platform?.History?.push) {
+            Spicetify.Platform.History.push(`/track/${trackId}`);
+            return true;
+        }
+    } catch (e) {
+        debug('Failed to navigate to track page as fallback:', e);
+    }
+
+    return false;
+}
+
+async function openCachedLyricsViewer(trackUri: string, targetLang: string, sourceLang: string): Promise<void> {
+    const trackCache = getTrackCache(trackUri, targetLang);
+    if (!trackCache) {
+        if (Spicetify.showNotification) {
+            Spicetify.showNotification('Could not load cached translation for this track', true);
+        }
+        return;
+    }
+    const translatedLines = trackCache.lines || [];
+
+    const renderRows = (sourceLines: string[]): string => {
+        const maxLines = Math.max(sourceLines.length, translatedLines.length);
+        return Array.from({ length: maxLines }).map((_, idx) => {
+            const sourceText = escapeHtml(sourceLines[idx] ?? '');
+            const translatedText = escapeHtml(translatedLines[idx] ?? '');
+            return `
+                <div class="slt-lyrics-row">
+                    <div class="slt-lyrics-col">${sourceText || '&nbsp;'}</div>
+                    <div class="slt-lyrics-col">${translatedText || '&nbsp;'}</div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    const content = document.createElement('div');
+    content.className = 'slt-lyrics-viewer';
+    content.innerHTML = `
+        <style>
+            .slt-lyrics-viewer {
+                width: min(2640px, calc(96vw - 28px));
+                max-width: calc(96vw - 28px);
+                max-height: 76vh;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                box-sizing: border-box;
+                overflow-x: hidden;
+                overflow-y: hidden;
+            }
+            .slt-lyrics-header {
+                font-size: 13px;
+                color: var(--spice-subtext);
+                overflow-wrap: anywhere;
+            }
+            .slt-lyrics-toolbar {
+                display: flex;
+                justify-content: flex-end;
+            }
+            .slt-lyrics-back {
+                padding: 8px 14px;
+                border-radius: 999px;
+                border: none;
+                background: var(--spice-main-elevated);
+                color: var(--spice-text);
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .slt-lyrics-back:hover {
+                opacity: 0.85;
+            }
+            .slt-lyrics-grid {
+                display: flex;
+                flex-direction: column;
+                gap: 1px;
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 8px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                max-height: 66vh;
+            }
+            .slt-lyrics-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                gap: 1px;
+            }
+            .slt-lyrics-col {
+                padding: 10px 12px;
+                background: var(--spice-card);
+                color: var(--spice-text);
+                font-size: 13px;
+                line-height: 1.4;
+                white-space: pre-wrap;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+            .slt-lyrics-head {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: var(--spice-subtext);
+                font-weight: 600;
+            }
+        </style>
+        <div class="slt-lyrics-toolbar">
+            <button id="slt-lyrics-back-to-cache" class="slt-lyrics-back" type="button">← Back to Cache</button>
+        </div>
+        <div class="slt-lyrics-header">Track ID: ${escapeHtml(getTrackIdFromUri(trackUri))}</div>
+        <div class="slt-lyrics-grid">
+            <div class="slt-lyrics-row">
+                <div class="slt-lyrics-col slt-lyrics-head" id="slt-lyrics-source-heading">${escapeHtml(sourceLang.toUpperCase())} (Source)</div>
+                <div class="slt-lyrics-col slt-lyrics-head">${escapeHtml(targetLang.toUpperCase())} (Translated)</div>
+            </div>
+            <div id="slt-lyrics-rows">
+                ${renderRows([]) || '<div class="slt-lyrics-row"><div class="slt-lyrics-col">No cached lines</div><div class="slt-lyrics-col">No cached lines</div></div>'}
+            </div>
+        </div>
+    `;
+
+    if (Spicetify.PopupModal) {
+        Spicetify.PopupModal.display({
+            title: 'Cached Lyrics Viewer',
+            content,
+            isLarge: true
+        });
+    }
+
+    const backToCacheBtn = content.querySelector('#slt-lyrics-back-to-cache') as HTMLButtonElement;
+    backToCacheBtn?.addEventListener('click', () => {
+        Spicetify.PopupModal?.hide();
+        setTimeout(() => openCacheViewer(), 120);
+    });
+
+    try {
+        const sourceLyrics = await fetchLyricsForTrackUri(trackUri);
+        const sourceLines = sourceLyrics?.lines?.length ? sourceLyrics.lines : [];
+        const rowsContainer = content.querySelector('#slt-lyrics-rows') as HTMLElement;
+        if (rowsContainer) {
+            rowsContainer.innerHTML = renderRows(sourceLines) || '<div class="slt-lyrics-row"><div class="slt-lyrics-col">No source lyrics found</div><div class="slt-lyrics-col">No cached lines</div></div>';
+        }
+
+        if (sourceLyrics?.language) {
+            const sourceHeading = content.querySelector('#slt-lyrics-source-heading') as HTMLElement;
+            if (sourceHeading) {
+                sourceHeading.textContent = `${sourceLyrics.language.toUpperCase()} (Source)`;
+            }
+        }
+    } catch (e) {
+        debug('Failed to fetch source lyrics for side-by-side view:', e);
+        const rowsContainer = content.querySelector('#slt-lyrics-rows') as HTMLElement;
+        if (rowsContainer) {
+            rowsContainer.innerHTML = renderRows([]);
+        }
+    }
+}
+
 function createCacheViewerUI(): HTMLElement {
     const stats = getTrackCacheStats();
     const cachedTracks = getAllCachedTracks();
@@ -754,6 +1080,25 @@ function createCacheViewerUI(): HTMLElement {
             .slt-cache-delete:hover {
                 background: rgba(255, 80, 80, 0.4);
             }
+            .slt-cache-item-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
+            }
+            .slt-cache-action {
+                padding: 6px 10px;
+                border-radius: 4px;
+                border: none;
+                font-size: 12px;
+                cursor: pointer;
+                transition: opacity 0.2s;
+                color: var(--spice-text);
+                background: var(--spice-main-elevated);
+            }
+            .slt-cache-action:hover {
+                opacity: 0.85;
+            }
             .slt-cache-delete-all {
                 padding: 10px 20px;
                 border-radius: 500px;
@@ -779,7 +1124,27 @@ function createCacheViewerUI(): HTMLElement {
                 justify-content: center;
                 padding-top: 8px;
             }
+            .slt-cache-toolbar {
+                display: flex;
+                justify-content: flex-end;
+            }
+            .slt-cache-back {
+                padding: 8px 14px;
+                border-radius: 999px;
+                border: none;
+                background: var(--spice-main-elevated);
+                color: var(--spice-text);
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .slt-cache-back:hover {
+                opacity: 0.85;
+            }
         </style>
+        <div class="slt-cache-toolbar">
+            <button id="slt-cache-back-to-settings" class="slt-cache-back" type="button">← Back to Settings</button>
+        </div>
         
         <div class="slt-cache-stats">
             <div class="slt-stat">
@@ -806,14 +1171,18 @@ function createCacheViewerUI(): HTMLElement {
                 cachedTracks
                     .sort((a, b) => b.timestamp - a.timestamp)
                     .map((track, index) => {
-                        const trackId = track.trackUri.replace('spotify:track:', '');
+                        const trackId = getTrackIdFromUri(track.trackUri);
                         return `
                         <div class="slt-cache-item" data-uri="${track.trackUri}" data-lang="${track.targetLang}">
                             <div class="slt-cache-item-info">
                                 <span class="slt-cache-item-title">Track ID: ${trackId}</span>
                                 <span class="slt-cache-item-meta">${track.sourceLang} → ${track.targetLang} · ${track.lineCount} lines · ${formatDate(track.timestamp)}</span>
                             </div>
-                            <button class="slt-cache-delete" data-index="${index}">Delete</button>
+                            <div class="slt-cache-item-actions">
+                                <button class="slt-cache-action slt-cache-play" data-index="${index}">Play</button>
+                                <button class="slt-cache-action slt-cache-view-lyrics" data-index="${index}" data-source-lang="${track.sourceLang}">View Lyrics</button>
+                                <button class="slt-cache-delete" data-index="${index}">Delete</button>
+                            </div>
                         </div>
                     `}).join('')
             }
@@ -827,6 +1196,64 @@ function createCacheViewerUI(): HTMLElement {
     `;
     
     setTimeout(() => {
+        const backToSettingsBtn = container.querySelector('#slt-cache-back-to-settings') as HTMLButtonElement;
+        backToSettingsBtn?.addEventListener('click', () => {
+            Spicetify.PopupModal?.hide();
+            setTimeout(() => openSettingsModal(), 120);
+        });
+
+        container.querySelectorAll('.slt-cache-play').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const button = e.currentTarget as HTMLButtonElement;
+                const item = button.closest('.slt-cache-item') as HTMLElement;
+                const uri = item?.dataset.uri;
+                if (!uri) return;
+
+                button.disabled = true;
+                const previousText = button.textContent;
+                button.textContent = 'Opening...';
+
+                try {
+                    const played = await playCachedTrack(uri);
+                    if (Spicetify.showNotification) {
+                        Spicetify.showNotification(played ? 'Opening cached track' : 'Unable to play track directly', !played);
+                    }
+                } finally {
+                    button.disabled = false;
+                    button.textContent = previousText || 'Play';
+                }
+            });
+        });
+
+        container.querySelectorAll('.slt-cache-view-lyrics').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const button = e.currentTarget as HTMLButtonElement;
+                const item = button.closest('.slt-cache-item') as HTMLElement;
+                const uri = item?.dataset.uri;
+                const lang = item?.dataset.lang;
+                const sourceLang = button.dataset.sourceLang || 'auto';
+                if (!uri || !lang) return;
+
+                button.disabled = true;
+                const previousText = button.textContent;
+                button.textContent = 'Loading...';
+
+                try {
+                    Spicetify.PopupModal?.hide();
+                    await new Promise(resolve => setTimeout(resolve, 120));
+                    await openCachedLyricsViewer(uri, lang, sourceLang);
+                } catch (error) {
+                    debug('Failed to open cached lyrics viewer:', error);
+                    if (Spicetify.showNotification) {
+                        Spicetify.showNotification('Failed to open cached lyrics viewer', true);
+                    }
+                } finally {
+                    button.disabled = false;
+                    button.textContent = previousText || 'View Lyrics';
+                }
+            });
+        });
+
         container.querySelectorAll('.slt-cache-delete').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const item = (e.target as HTMLElement).closest('.slt-cache-item') as HTMLElement;
@@ -898,7 +1325,7 @@ export function openSettingsModal(): void {
         Spicetify.PopupModal.display({
             title: 'Spicy Lyric Translater Settings',
             content: createSettingsUI(),
-            isLarge: false
+            isLarge: true
         });
     }
 }

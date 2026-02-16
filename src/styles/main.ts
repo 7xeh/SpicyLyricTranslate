@@ -548,10 +548,10 @@ body.slt-overlay-active .LyricsContent {}
         rgba(255, 255, 255, var(--gradient-alpha)) var(--gradient-position),
         rgba(255, 255, 255, var(--gradient-alpha-end)) calc(var(--gradient-position) + 20% + var(--gradient-offset))
     ) !important;
-    background-size: 100% 1.1818181818em;
-    background-repeat: repeat-y;
-    -webkit-box-decoration-break: clone;
-    box-decoration-break: clone;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    -webkit-box-decoration-break: slice;
+    box-decoration-break: slice;
 }
 
 
@@ -673,7 +673,7 @@ body.SpicySidebarLyrics__Active .slt-interleaved-translation {
 }
 
 .slt-sync-word.slt-word-past {
-    opacity: 0.5;
+    opacity: 0.6;
 }
 
 .slt-sync-word.slt-word-active {

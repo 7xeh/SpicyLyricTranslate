@@ -11,7 +11,7 @@ import {
     isOverlayActive,
     setLineTimingData
 } from './translationOverlay';
-import { shouldSkipTranslation } from './languageDetection';
+import { shouldSkipTranslation, detectLanguageHeuristic, isSameLanguage } from './languageDetection';
 import { openSettingsModal } from './settings';
 import { debug, warn, error } from './debug';
 import { fetchLyricsFromAPI, clearLyricsCache, LyricLineData } from './lyricsFetcher';
@@ -243,6 +243,28 @@ export function extractLineText(lineElement: Element): string {
     return lineElement.textContent?.trim() || '';
 }
 
+function getConfidentNonTargetLineIndexes(lines: string[], targetLanguage: string): number[] {
+    const indexes: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || line.trim().length === 0) {
+            continue;
+        }
+
+        const detected = detectLanguageHeuristic(line);
+        if (!detected || detected.confidence < 0.75) {
+            continue;
+        }
+
+        if (!isSameLanguage(detected.code, targetLanguage)) {
+            indexes.push(i);
+        }
+    }
+
+    return indexes;
+}
+
 function getLyricsLines(): NodeListOf<Element> {
     const docs: Document[] = [document];
     const pip = getPIPWindow();
@@ -339,16 +361,6 @@ export async function translateCurrentLyrics(): Promise<void> {
 
         if (preApiSkipCheck.detectedLanguage) {
             state.detectedLanguage = preApiSkipCheck.detectedLanguage;
-        }
-
-        if (preApiSkipCheck.skip) {
-            state.isTranslating = false;
-            state.lastTranslatedSongUri = currentTrackUri;
-            restoreButtonState();
-            if (state.showNotifications && Spicetify.showNotification) {
-                Spicetify.showNotification(preApiSkipCheck.reason || 'Lyrics already in target language');
-            }
-            return;
         }
 
         let apiLineTexts: string[] | null = null;
@@ -456,17 +468,52 @@ export async function translateCurrentLyrics(): Promise<void> {
         
         if (skipCheck.detectedLanguage) state.detectedLanguage = skipCheck.detectedLanguage;
         
+        let translations;
+
         if (skipCheck.skip) {
-            state.isTranslating = false;
-            state.lastTranslatedSongUri = currentTrackUri;
-            restoreButtonState();
-            if (state.showNotifications && Spicetify.showNotification) {
-                Spicetify.showNotification(skipCheck.reason || 'Lyrics already in target language');
+            const nonTargetIndexes = getConfidentNonTargetLineIndexes(lineTexts, state.targetLanguage);
+
+            if (nonTargetIndexes.length === 0) {
+                state.isTranslating = false;
+                state.lastTranslatedSongUri = currentTrackUri;
+                restoreButtonState();
+                if (state.showNotifications && Spicetify.showNotification) {
+                    Spicetify.showNotification(skipCheck.reason || 'Lyrics already in target language');
+                }
+                return;
             }
-            return;
+
+            const partialLines = nonTargetIndexes.map(index => lineTexts[index]);
+            const partialTranslations = await translateLyrics(
+                partialLines,
+                state.targetLanguage,
+                undefined,
+                state.detectedLanguage || undefined
+            );
+
+            const translatedByIndex = new Map<number, { translatedText: string; source?: 'cache' | 'api' }>();
+            partialTranslations.forEach((result, idx) => {
+                translatedByIndex.set(nonTargetIndexes[idx], {
+                    translatedText: result.translatedText,
+                    source: result.source
+                });
+            });
+
+            translations = lineTexts.map((line, index) => {
+                const partial = translatedByIndex.get(index);
+                const translatedText = partial?.translatedText || line;
+                const wasTranslated = translatedByIndex.has(index) && translatedText !== line;
+                return {
+                    originalText: line,
+                    translatedText,
+                    targetLanguage: state.targetLanguage,
+                    wasTranslated,
+                    source: partial?.source
+                };
+            });
+        } else {
+            translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri || undefined, state.detectedLanguage || undefined);
         }
-        
-        const translations = await translateLyrics(lineTexts, state.targetLanguage, currentTrackUri || undefined, state.detectedLanguage || undefined);
         
         state.translatedLyrics.clear();
         
@@ -499,7 +546,10 @@ export async function translateCurrentLyrics(): Promise<void> {
         
         if (state.showNotifications && Spicetify.showNotification) {
             const wasActuallyTranslated = translations.some(t => t.wasTranslated === true);
-            if (wasActuallyTranslated) Spicetify.showNotification('Lyrics translated successfully!');
+            if (wasActuallyTranslated) {
+                const translatedFromApi = translations.some(t => t.wasTranslated === true && t.source === 'api');
+                Spicetify.showNotification(translatedFromApi ? 'Translated from Api' : 'Translated from Cache');
+            }
         }
     } catch (err) {
         error('Translation failed:', err);

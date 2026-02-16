@@ -12,6 +12,7 @@ interface TrackCacheEntry {
     lines: string[];
     timestamp: number;
     api?: string;
+    sourceFingerprint?: string;
 }
 
 interface CacheIndex {
@@ -90,7 +91,8 @@ export function setTrackCache(
     targetLang: string, 
     sourceLang: string,
     lines: string[],
-    api?: string
+    api?: string,
+    sourceFingerprint?: string
 ): void {
     const storage = getStorage();
     if (!storage || !trackUri || !lines.length) return;
@@ -102,7 +104,8 @@ export function setTrackCache(
         targetLang: targetLang,
         lines: lines,
         timestamp: Date.now(),
-        api: api
+        api: api,
+        sourceFingerprint
     };
     
     try {

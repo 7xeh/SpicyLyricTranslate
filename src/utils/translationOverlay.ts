@@ -285,6 +285,7 @@ function appendTranslationWordSpans(
 
     const originalWords = getWordUnits(originalLine);
     const ratio = translatedWords.length / Math.max(originalWords.length, 1);
+    const shouldAnimateLetters = wordClassName === 'slt-sync-word' && lineHasSyllableStructure(originalLine);
 
     translatedWords.forEach((word, wordIndex) => {
         const span = doc.createElement('span');
@@ -302,8 +303,110 @@ function appendTranslationWordSpans(
 
         span.dataset.originalIndex = Math.max(0, originalIndex).toString();
         span.dataset.wordIndex = wordIndex.toString();
-        span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
+        if (shouldAnimateLetters) {
+            appendSyncWordLetters(doc, span, word, wordIndex < translatedWords.length - 1);
+        } else {
+            span.textContent = wordIndex < translatedWords.length - 1 ? word + ' ' : word;
+        }
         container.appendChild(span);
+    });
+}
+
+function lineHasSyllableStructure(line: Element): boolean {
+    return !!line.querySelector('.syllable, .letterGroup .letter, .word-group .syllable');
+}
+
+function splitIntoGraphemes(text: string): string[] {
+    const segmenterCtor = (globalThis as any).Intl?.Segmenter;
+    if (typeof segmenterCtor === 'function') {
+        const segmenter = new segmenterCtor(undefined, { granularity: 'grapheme' });
+        return Array.from(segmenter.segment(text), (segment: any) => segment.segment);
+    }
+    return Array.from(text);
+}
+
+function appendSyncWordLetters(doc: Document, wordEl: HTMLElement, word: string, appendTrailingSpace: boolean): void {
+    const graphemes = splitIntoGraphemes(word);
+    wordEl.textContent = '';
+
+    graphemes.forEach((grapheme, letterIndex) => {
+        const letterSpan = doc.createElement('span');
+        letterSpan.className = 'slt-sync-letter slt-letter-future';
+        letterSpan.dataset.letterIndex = letterIndex.toString();
+        letterSpan.textContent = grapheme;
+        wordEl.appendChild(letterSpan);
+    });
+
+    if (appendTrailingSpace) {
+        wordEl.appendChild(doc.createTextNode(' '));
+    }
+}
+
+function getMappedOriginalLetterProgresses(originalLine: HTMLElement, mappedIndex: number): number[] | null {
+    const originalWords = getWordUnits(originalLine);
+    if (mappedIndex < 0 || mappedIndex >= originalWords.length) return null;
+
+    const sourceWord = originalWords[mappedIndex] as HTMLElement;
+    if (!sourceWord.classList.contains('letterGroup')) return null;
+
+    const sourceLetters = Array.from(sourceWord.querySelectorAll('.letter')) as HTMLElement[];
+    if (sourceLetters.length < 2) return null;
+
+    const progressValues = sourceLetters
+        .map((letterEl) => parseFloat(letterEl.style.getPropertyValue('--gradient-position')))
+        .filter((value) => !isNaN(value))
+        .map((value) => Math.max(0, Math.min(1, (value + 20) / 120)));
+
+    if (progressValues.length < 2) return null;
+
+    const hasSustainProgress = progressValues.some((value) => value > 0.05 && value < 0.95);
+    if (!hasSustainProgress) return null;
+
+    return progressValues;
+}
+
+function updateSyncWordLetterStates(
+    wordEl: HTMLElement,
+    gradientPosition: number,
+    isWordActive: boolean,
+    isWordSung: boolean,
+    originalLine: HTMLElement,
+    mappedOriginalIndex: number
+): void {
+    const letters = Array.from(wordEl.querySelectorAll(':scope > .slt-sync-letter')) as HTMLElement[];
+    if (letters.length === 0) return;
+
+    const sourceLetterProgresses = getMappedOriginalLetterProgresses(originalLine, mappedOriginalIndex);
+    const hasSustainedSource = !!sourceLetterProgresses;
+
+    const progress = Math.max(0, Math.min(1, (gradientPosition + 20) / 120));
+    const travelingProgress = progress * letters.length;
+
+    letters.forEach((letterEl, index) => {
+        let localProgress = Math.max(0, Math.min(1, travelingProgress - index));
+        let isLetterPast = travelingProgress >= index + 1;
+        let isLetterActive = !isLetterPast && localProgress > 0;
+
+        if (hasSustainedSource && sourceLetterProgresses) {
+            const sourceIndex = Math.floor((index / Math.max(letters.length - 1, 1)) * (sourceLetterProgresses.length - 1));
+            const sourceProgress = sourceLetterProgresses[sourceIndex];
+            localProgress = sourceProgress;
+            isLetterPast = sourceProgress >= 0.95;
+            isLetterActive = sourceProgress > 0.05 && sourceProgress < 0.95;
+        }
+
+        letterEl.classList.toggle('slt-letter-past', isLetterPast);
+        letterEl.classList.toggle('slt-letter-active', isLetterActive);
+        letterEl.classList.toggle('slt-letter-future', !isLetterPast && !isLetterActive);
+
+        let yShift = 0;
+        if (isWordActive && hasSustainedSource) {
+            yShift = -0.2 * Math.sin(localProgress * Math.PI);
+        } else if (isWordSung) {
+            yShift = -0.015;
+        }
+
+        letterEl.style.setProperty('--slt-letter-shift', `${yShift.toFixed(3)}em`);
     });
 }
 
@@ -403,6 +506,27 @@ function cleanupInterleavedTracking(): void {
     }
 }
 
+function hasWrappedSyncWords(translationEl: HTMLElement): boolean {
+    const words = Array.from(translationEl.querySelectorAll(':scope > .slt-sync-word')) as HTMLElement[];
+    if (words.length < 2) return false;
+
+    const firstTop = words[0].offsetTop;
+    return words.some((wordEl, index) => index > 0 && Math.abs(wordEl.offsetTop - firstTop) > 2);
+}
+
+function fallbackToContinuousMultilineGradient(
+    translationEl: HTMLElement,
+    translationText: string,
+    originalLine: Element
+): void {
+    if (lineHasSyllableStructure(originalLine)) return;
+    if (!translationEl.querySelector(':scope > .slt-sync-word')) return;
+    if (!hasWrappedSyncWords(translationEl)) return;
+
+    translationEl.textContent = translationText;
+    translationEl.dataset.sltGradientMode = 'continuous-multiline';
+}
+
 function applyInterleavedMode(doc: Document): void {
     cachedLines = null;
     cachedTranslationMap = null;
@@ -461,6 +585,10 @@ function applyInterleavedMode(doc: Document): void {
                 if (isLineActive(line)) translationEl.classList.add('active');
                 
                 line.parentNode.insertBefore(translationEl, line.nextSibling);
+
+                if (!isBreak && currentConfig.syncWordHighlight && translation) {
+                    fallbackToContinuousMultilineGradient(translationEl, translation, line);
+                }
             } catch (lineErr) {
                 warn('Failed to process line', index, ':', lineErr);
             }
@@ -531,6 +659,10 @@ function applySyncedMode(doc: Document): void {
                 }
                 
                 line.parentNode.insertBefore(translationEl, line.nextSibling);
+
+                if (!isBreak && currentConfig.syncWordHighlight) {
+                    fallbackToContinuousMultilineGradient(translationEl, translation || '', line);
+                }
             } catch (lineErr) {
                 warn('Failed to process line for synced mode', index, ':', lineErr);
             }
@@ -605,17 +737,17 @@ function getOverallWordGradientProgress(originalLine: HTMLElement): number | nul
 
         if (wordEl.classList.contains('letterGroup')) {
             const letters = wordEl.querySelectorAll('.letter');
-            let maxGradient = -Infinity;
+            const letterGradients: number[] = [];
             for (const letter of Array.from(letters)) {
                 const letterGradient = parseFloat(
                     (letter as HTMLElement).style.getPropertyValue('--gradient-position')
                 );
-                if (!isNaN(letterGradient) && letterGradient > maxGradient) {
-                    maxGradient = letterGradient;
+                if (!isNaN(letterGradient)) {
+                    letterGradients.push(letterGradient);
                 }
             }
-            if (maxGradient > -Infinity) {
-                gradientValue = maxGradient;
+            if (letterGradients.length > 0) {
+                gradientValue = letterGradients.reduce((sum, value) => sum + value, 0) / letterGradients.length;
             }
         } else {
             gradientValue = parseFloat(wordEl.style.getPropertyValue('--gradient-position'));
@@ -653,17 +785,17 @@ function getOriginalWordGradients(originalLine: HTMLElement): number[] {
 
         if (wordEl.classList.contains('letterGroup')) {
             const letters = wordEl.querySelectorAll('.letter');
-            let maxGradient = -Infinity;
+            const letterGradients: number[] = [];
             for (const letter of Array.from(letters)) {
                 const letterGradient = parseFloat(
                     (letter as HTMLElement).style.getPropertyValue('--gradient-position')
                 );
-                if (!isNaN(letterGradient) && letterGradient > maxGradient) {
-                    maxGradient = letterGradient;
+                if (!isNaN(letterGradient)) {
+                    letterGradients.push(letterGradient);
                 }
             }
-            if (maxGradient > -Infinity) {
-                gradientValue = maxGradient;
+            if (letterGradients.length > 0) {
+                gradientValue = letterGradients.reduce((sum, value) => sum + value, 0) / letterGradients.length;
             }
         } else {
             gradientValue = parseFloat(wordEl.style.getPropertyValue('--gradient-position'));
@@ -687,7 +819,8 @@ function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine
     const isNotSung = originalLine.classList.contains('NotSung');
     const originalWordGradients = getOriginalWordGradients(originalLine);
     const overallProgress = getOverallWordGradientProgress(originalLine);
-    const PROGRESSION_SMOOTHING = 0.22;
+    const PROGRESSION_SMOOTHING = 0.68;
+    const PROGRESSION_SNAP_DELTA = 8;
     const LATCH_WHITE_THRESHOLD = 96;
 
     const groupedTranslatedWordIndexes = new Map<number, number[]>();
@@ -725,6 +858,9 @@ function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine
             wordEl.classList.toggle('word-sung', isWordSung);
             wordEl.classList.toggle('word-active', isWordActive);
             wordEl.classList.toggle('word-notsng', !isWordSung && !isWordActive);
+
+            const mappedIndex = parseInt(wordEl.dataset.originalIndex || '-1', 10);
+            updateSyncWordLetterStates(wordEl, fallbackGradient, isWordActive, isWordSung, originalLine, mappedIndex);
         });
 
         return true;
@@ -790,7 +926,14 @@ function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine
                 gradientPosition = 100;
                 wordEl.dataset.sltLatchedWhite = '1';
             } else if (!isNaN(previousGradient)) {
-                gradientPosition = previousGradient + (gradientPosition - previousGradient) * PROGRESSION_SMOOTHING;
+                const delta = gradientPosition - previousGradient;
+                if (delta > PROGRESSION_SNAP_DELTA) {
+                    gradientPosition = gradientPosition;
+                } else if (delta > 0) {
+                    gradientPosition = previousGradient + delta * PROGRESSION_SMOOTHING;
+                } else {
+                    gradientPosition = previousGradient;
+                }
             }
         }
 
@@ -813,6 +956,16 @@ function updateTranslatedWordGradients(translatedLine: HTMLElement, originalLine
             wordEl.classList.remove('word-sung', 'word-active', 'slt-word-past', 'slt-word-active');
             wordEl.classList.add('word-notsng', 'slt-word-future');
         }
+
+        const mappedIndex = parseInt(wordEl.dataset.originalIndex || '-1', 10);
+        updateSyncWordLetterStates(
+            wordEl,
+            clamped,
+            wordEl.classList.contains('slt-word-active'),
+            wordEl.classList.contains('slt-word-past'),
+            originalLine,
+            mappedIndex
+        );
     });
 
     return true;

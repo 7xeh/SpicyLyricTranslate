@@ -137,7 +137,7 @@
     };
 
     const waitForSpicetify = () => {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             const check = () => {
                 if (
                     typeof Spicetify !== 'undefined' &&
@@ -162,8 +162,9 @@
             
             setTimeout(() => {
                 clearInterval(interval);
-                log.warn('Spicetify timeout - proceeding anyway');
-                resolve();
+                const error = new Error('Spicetify not found or not ready after 30 seconds');
+                log.error('Spicetify timeout - aborting extension load', error);
+                reject(error);
             }, 30000);
         });
     };
@@ -191,6 +192,15 @@
     const normalizeTrackUri = (uri) => {
         if (!uri) return null;
         return uri.replace(/[^a-zA-Z0-9:]/g, '_');
+    };
+
+    const escapeHtml = (value) => {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     };
 
     let _spicyLyricsAvailable = null;
@@ -298,6 +308,8 @@
     };
 
     const showError = (message) => {
+        const safeMessage = escapeHtml(message || 'Unknown error');
+
         waitForElm('.Root__main-view', 15000).then(() => {
             const waitForModal = setInterval(() => {
                 if (typeof Spicetify !== 'undefined' && Spicetify.PopupModal) {
@@ -310,7 +322,7 @@
                                     Failed to load extension
                                 </h3>
                                 <p style="margin: 0 0 16px; opacity: 0.7;">
-                                    ${message}
+                                    ${safeMessage}
                                 </p>
                                 <p style="margin: 0 0 8px;">
                                     Please check your network connection and try restarting Spotify.
@@ -331,7 +343,13 @@
     };
 
     const load = async (retries = 3) => {
-        await waitForSpicetify();
+        try {
+            await waitForSpicetify();
+        } catch (err) {
+            log.error('Required dependency unavailable:', err);
+            showError('Spicetify is not available. Please fully restart Spotify and try again.');
+            return;
+        }
 
         let lastError;
         
